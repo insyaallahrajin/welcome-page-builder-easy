@@ -5,7 +5,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/components/ui/use-toast';
@@ -13,7 +12,6 @@ import { Utensils } from 'lucide-react';
 
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
-  const [registrationRole, setRegistrationRole] = useState('parent');
   const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
 
@@ -65,11 +63,12 @@ const Auth = () => {
     const address = formData.get('address') as string;
 
     try {
+      // Always register as 'parent' role - no selection needed
       const { error } = await signUp(email, password, {
         full_name: fullName,
         phone: phone,
         address: address,
-        role: registrationRole
+        role: 'parent'
       });
       
       if (error) {
@@ -198,19 +197,6 @@ const Auth = () => {
                     type="text" 
                     placeholder="masukkan alamat"
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="role">Role</Label>
-                  <Select value={registrationRole} onValueChange={setRegistrationRole}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Pilih role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="parent">Parent</SelectItem>
-                      <SelectItem value="cashier">Kasir</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="password">Password</Label>
