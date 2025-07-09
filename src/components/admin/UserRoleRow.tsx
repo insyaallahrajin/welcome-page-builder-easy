@@ -21,6 +21,11 @@ export const UserRoleRow = ({ user, currentRole, onRoleChange }: UserRoleRowProp
     }
   };
 
+  const displayName = user.full_name || `User ${user.id.slice(0, 8)}`;
+  const displaySubtext = user.full_name 
+    ? `ID: ${user.id.slice(0, 8)}...` 
+    : `ID: ${user.id}`;
+
   return (
     <div className="flex items-center justify-between p-4 border rounded-lg">
       <div className="flex items-center space-x-3">
@@ -29,10 +34,10 @@ export const UserRoleRow = ({ user, currentRole, onRoleChange }: UserRoleRowProp
         </div>
         <div>
           <p className="font-medium">
-            {user.full_name || user.email || `User ${user.id.slice(0, 8)}`}
+            {displayName}
           </p>
           <p className="text-sm text-gray-500">
-            {user.email || `ID: ${user.id.slice(0, 8)}...`}
+            {displaySubtext}
           </p>
           <p className="text-xs text-gray-400">
             Role saat ini: {currentRole}
