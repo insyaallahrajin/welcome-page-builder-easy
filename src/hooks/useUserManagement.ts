@@ -29,6 +29,18 @@ export const useUserManagement = () => {
       
       console.log('Profiles data:', profilesData);
       
+      // Fetch user roles
+      const { data: rolesData, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('user_id, role');
+
+      if (rolesError) {
+        console.error('Error fetching roles:', rolesError);
+        throw rolesError;
+      }
+      
+      console.log('Roles data:', rolesData);
+      
       // Convert profiles data to ProfileUser format
       let combinedUsers: ProfileUser[] = [];
       
@@ -42,19 +54,24 @@ export const useUserManagement = () => {
         }));
       }
       
-      setProfileUsers(combinedUsers);
-
-      // Fetch user roles
-      const { data: rolesData, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('user_id, role');
-
-      if (rolesError) {
-        console.error('Error fetching roles:', rolesError);
-        throw rolesError;
+      // Add users that exist in user_roles but not in profiles
+      if (rolesData && Array.isArray(rolesData)) {
+        const existingProfileIds = combinedUsers.map(user => user.id);
+        const missingUsers = rolesData
+          .filter(role => !existingProfileIds.includes(role.user_id))
+          .map(role => ({
+            id: role.user_id,
+            full_name: null,
+            created_at: new Date().toISOString(),
+            role: role.role,
+            email: null
+          }));
+        
+        combinedUsers = [...combinedUsers, ...missingUsers];
+        console.log('Combined users with missing profiles:', combinedUsers);
       }
       
-      console.log('Roles data:', rolesData);
+      setProfileUsers(combinedUsers);
       setUserRoles(rolesData || []);
     } catch (error) {
       console.error('Error fetching data:', error);
