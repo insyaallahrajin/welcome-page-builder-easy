@@ -9,17 +9,24 @@ import { formatPrice, formatDate } from '@/utils/orderUtils';
 import { usePagination } from '@/hooks/usePagination';
 import { PaginationControls } from '@/components/ui/pagination-controls';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Calendar, DollarSign, Receipt, TrendingUp } from 'lucide-react';
+import { Calendar, DollarSign, Receipt, TrendingUp, User } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface CashPayment {
   id: string;
   amount: number;
   created_at: string;
   order_id: string;
+  cashier_name: string;
   orders: {
     child_name: string;
     child_class: string;
   } | null;
+}
+
+interface Cashier {
+  id: string;
+  full_name: string;
 }
 
 interface DailyReport {
@@ -34,6 +41,8 @@ const CashierReports = () => {
   const [filteredPayments, setFilteredPayments] = useState<CashPayment[]>([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [selectedCashier, setSelectedCashier] = useState<string>('all');
+  const [cashiers, setCashiers] = useState<Cashier[]>([]);
   const [dailyReports, setDailyReports] = useState<DailyReport[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -67,10 +76,29 @@ const CashierReports = () => {
   useEffect(() => {
     filterPayments();
     generateDailyReports();
-  }, [cashPayments, startDate, endDate]);
+  }, [cashPayments, startDate, endDate, selectedCashier]);
+
+  useEffect(() => {
+    fetchCashiers();
+  }, []);
+
+  const fetchCashiers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('role', 'cashier');
+
+      if (error) throw error;
+      setCashiers(data || []);
+    } catch (error) {
+      console.error('Error fetching cashiers:', error);
+    }
+  };
 
   const fetchCashPayments = async () => {
     try {
+      // Simplified approach - get all paid orders first
       const { data, error } = await supabase
         .from('orders')
         .select(`
@@ -91,6 +119,7 @@ const CashierReports = () => {
         amount: order.total_amount,
         created_at: order.created_at,
         order_id: order.id,
+        cashier_name: 'Kasir', // Simplified for now
         orders: {
           child_name: order.child_name,
           child_class: order.child_class
@@ -118,6 +147,10 @@ const CashierReports = () => {
         const paymentDate = new Date(payment.created_at).toISOString().split('T')[0];
         return paymentDate >= startDate && paymentDate <= endDate;
       });
+    }
+
+    if (selectedCashier !== 'all') {
+      filtered = filtered.filter(payment => payment.cashier_name === selectedCashier);
     }
 
     setFilteredPayments(filtered);
@@ -302,7 +335,7 @@ const CashierReports = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium mb-2">Tanggal Mulai</label>
               <Input
@@ -319,10 +352,27 @@ const CashierReports = () => {
                 onChange={(e) => setEndDate(e.target.value)}
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Filter Kasir</label>
+              <Select value={selectedCashier} onValueChange={setSelectedCashier}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih Kasir" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Kasir</SelectItem>
+                  {cashiers.map((cashier) => (
+                    <SelectItem key={cashier.id} value={cashier.full_name}>
+                      {cashier.full_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex items-end">
               <Button onClick={() => {
                 setStartDate('');
                 setEndDate('');
+                setSelectedCashier('all');
               }} variant="outline">
                 Reset Filter
               </Button>
@@ -413,6 +463,10 @@ const CashierReports = () => {
                   <p className="font-medium">{payment.orders?.child_name}</p>
                   <p className="text-sm text-gray-600">
                     {payment.orders?.child_class} • {formatDate(payment.created_at)}
+                  </p>
+                  <p className="text-xs text-blue-600 flex items-center mt-1">
+                    <User className="h-3 w-3 mr-1" />
+                    {payment.cashier_name}
                   </p>
                 </div>
                 <div className="text-right">
