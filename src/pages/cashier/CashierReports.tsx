@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPrice, formatDate } from '@/utils/orderUtils';
+import { usePagination } from '@/hooks/usePagination';
+import { PaginationControls } from '@/components/ui/pagination-controls';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Calendar, DollarSign, Receipt, TrendingUp } from 'lucide-react';
 
@@ -35,6 +37,22 @@ const CashierReports = () => {
   const [dailyReports, setDailyReports] = useState<DailyReport[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Pagination untuk transaksi
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedPayments,
+    goToPage,
+    canGoNext,
+    canGoPrev,
+    startIndex,
+    endIndex,
+    totalItems
+  } = usePagination({
+    data: filteredPayments,
+    itemsPerPage: 20
+  });
+
   useEffect(() => {
     // Set default dates (last 7 days)
     const today = new Date();
@@ -54,22 +72,29 @@ const CashierReports = () => {
   const fetchCashPayments = async () => {
     try {
       const { data, error } = await supabase
-        .from('payments')
+        .from('orders')
         .select(`
-          *,
-          orders (
-            child_name,
-            child_class
-          )
+          id,
+          child_name,
+          child_class,
+          total_amount,
+          created_at,
+          payment_status
         `)
-        .eq('payment_method', 'cash')
+        .eq('payment_status', 'paid')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      const transformedPayments = (data || []).map(payment => ({
-        ...payment,
-        orders: payment.orders || { child_name: 'Unknown', child_class: 'Unknown' }
+      const transformedPayments = (data || []).map(order => ({
+        id: order.id,
+        amount: order.total_amount,
+        created_at: order.created_at,
+        order_id: order.id,
+        orders: {
+          child_name: order.child_name,
+          child_class: order.child_class
+        }
       }));
 
       setCashPayments(transformedPayments);
@@ -382,7 +407,7 @@ const CashierReports = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {filteredPayments.map((payment) => (
+            {paginatedPayments.map((payment) => (
               <div key={payment.id} className="flex justify-between items-center p-4 border rounded">
                 <div>
                   <p className="font-medium">{payment.orders?.child_name}</p>
@@ -396,6 +421,19 @@ const CashierReports = () => {
               </div>
             ))}
           </div>
+
+          {/* Pagination Controls */}
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={goToPage}
+            canGoNext={canGoNext}
+            canGoPrev={canGoPrev}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            totalItems={totalItems}
+            itemLabel="transaksi"
+          />
 
           {filteredPayments.length === 0 && (
             <div className="text-center py-12">

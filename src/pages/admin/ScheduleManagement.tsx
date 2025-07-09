@@ -36,7 +36,7 @@ const ScheduleManagement = () => {
   const [formData, setFormData] = useState({
     date: '',
     cutoff_date: '',
-    cutoff_time: '15:00',
+    cutoff_time: '08:00',
     max_orders: '',
     is_blocked: false,
     notes: ''
@@ -74,7 +74,7 @@ const ScheduleManagement = () => {
       const payload = {
         date: formData.date,
         cutoff_date: formData.cutoff_date || null,
-        cutoff_time: formData.cutoff_time || '15:00:00',
+        cutoff_time: formData.cutoff_time || '05:00:00',
         max_orders: formData.max_orders ? parseInt(formData.max_orders) : null,
         is_blocked: formData.is_blocked,
         notes: formData.notes || null
@@ -124,7 +124,7 @@ const ScheduleManagement = () => {
     setFormData({
       date: schedule.date,
       cutoff_date: schedule.cutoff_date || '',
-      cutoff_time: schedule.cutoff_time?.slice(0, 5) || '15:00',
+      cutoff_time: schedule.cutoff_time?.slice(0, 5) || '05:00',
       max_orders: schedule.max_orders?.toString() || '',
       is_blocked: schedule.is_blocked || false,
       notes: schedule.notes || ''
@@ -161,7 +161,7 @@ const ScheduleManagement = () => {
     setFormData({
       date: '',
       cutoff_date: '',
-      cutoff_time: '15:00',
+      cutoff_time: '05:00',
       max_orders: '',
       is_blocked: false,
       notes: ''

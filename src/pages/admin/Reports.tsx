@@ -1,10 +1,19 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PrintButton } from '@/components/ui/print-button';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { PaginationControls } from '@/components/ui/pagination-controls';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
 import { formatPrice, formatDate } from '@/utils/orderUtils';
+import { usePagination } from '@/hooks/usePagination';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { CalendarIcon, Filter, X } from 'lucide-react';
+import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 interface ReportData {
   id: string;
@@ -18,11 +27,69 @@ interface ReportData {
 
 const Reports = () => {
   const [orders, setOrders] = useState<ReportData[]>([]);
+  const [filteredOrders, setFilteredOrders] = useState<ReportData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [startDate, setStartDate] = useState<Date>();
+  const [endDate, setEndDate] = useState<Date>();
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('all');
+  const [classFilter, setClassFilter] = useState<string>('all');
+
+  const pagination = usePagination({
+    data: filteredOrders,
+    itemsPerPage: 10
+  });
 
   useEffect(() => {
     fetchReports();
   }, []);
+
+  useEffect(() => {
+    applyFilters();
+  }, [orders, startDate, endDate, paymentStatusFilter, classFilter]);
+
+  const applyFilters = () => {
+    let filtered = [...orders];
+    
+    // Date filtering
+    if (startDate) {
+      filtered = filtered.filter(order => {
+        const orderDate = new Date(order.created_at);
+        const startOfDay = new Date(startDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        return orderDate >= startOfDay;
+      });
+    }
+    
+    if (endDate) {
+      filtered = filtered.filter(order => {
+        const orderDate = new Date(order.created_at);
+        const endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        return orderDate <= endOfDay;
+      });
+    }
+
+    // Payment status filtering
+    if (paymentStatusFilter !== 'all') {
+      filtered = filtered.filter(order => order.payment_status === paymentStatusFilter);
+    }
+
+    // Class filtering
+    if (classFilter !== 'all') {
+      filtered = filtered.filter(order => order.child_class === classFilter);
+    }
+    
+    setFilteredOrders(filtered);
+  };
+
+  const clearFilters = () => {
+    setStartDate(undefined);
+    setEndDate(undefined);
+    setPaymentStatusFilter('all');
+    setClassFilter('all');
+  };
+
+  const uniqueClasses = [...new Set(orders.map(order => order.child_class))].sort();
 
   const fetchReports = async () => {
     try {
@@ -256,6 +323,125 @@ const Reports = () => {
         </Card>
       </div>
 
+      {/* Filters */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filter Data
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Date Range */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Tanggal Mulai</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !startDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {startDate ? format(startDate, "PPP") : <span>Pilih tanggal</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={startDate}
+                    onSelect={setStartDate}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Tanggal Akhir</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !endDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {endDate ? format(endDate, "PPP") : <span>Pilih tanggal</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={endDate}
+                    onSelect={setEndDate}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Payment Status Filter */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Status Pembayaran</label>
+              <Select value={paymentStatusFilter} onValueChange={setPaymentStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Status</SelectItem>
+                  <SelectItem value="paid">Lunas</SelectItem>
+                  <SelectItem value="pending">Menunggu</SelectItem>
+                  <SelectItem value="failed">Gagal</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Class Filter */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Kelas</label>
+              <Select value={classFilter} onValueChange={setClassFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih kelas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Kelas</SelectItem>
+                  {uniqueClasses.map((className) => (
+                    <SelectItem key={className} value={className}>
+                      Kelas {className}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center mt-4">
+            <Button
+              variant="outline"
+              onClick={clearFilters}
+              className="flex items-center gap-2"
+            >
+              <X className="h-4 w-4" />
+              Hapus Filter
+            </Button>
+            
+            {(startDate || endDate || paymentStatusFilter !== 'all' || classFilter !== 'all') && (
+              <div className="text-sm text-gray-600">
+                Menampilkan {filteredOrders.length} dari {orders.length} pesanan
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="mb-8">
         <CardHeader>
           <CardTitle>Grafik Harian</CardTitle>
@@ -276,25 +462,45 @@ const Reports = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>Detail Pesanan Terbaru</CardTitle>
+          <CardTitle>Detail Pesanan</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {orders.slice(0, 10).map((order) => (
+            {pagination.paginatedData.map((order) => (
               <div key={order.id} className="flex justify-between items-center p-4 border rounded">
                 <div>
                   <p className="font-medium">{order.child_name}</p>
                   <p className="text-sm text-gray-600">
-                    {order.child_class} • {formatDate(order.created_at)}
+                    Kelas {order.child_class} • {formatDate(order.created_at)}
                   </p>
                 </div>
                 <div className="text-right">
                   <p className="font-bold">{formatPrice(order.total_amount)}</p>
-                  <p className="text-sm text-gray-600">{order.payment_status}</p>
+                  <p className={`text-sm ${
+                    order.payment_status === 'paid' 
+                      ? 'text-green-600' 
+                      : order.payment_status === 'pending'
+                      ? 'text-yellow-600'
+                      : 'text-red-600'
+                  }`}>
+                    {order.payment_status}
+                  </p>
                 </div>
               </div>
             ))}
           </div>
+          
+          <PaginationControls
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
+            onPageChange={pagination.goToPage}
+            canGoNext={pagination.canGoNext}
+            canGoPrev={pagination.canGoPrev}
+            startIndex={pagination.startIndex}
+            endIndex={pagination.endIndex}
+            totalItems={pagination.totalItems}
+            itemLabel="pesanan"
+          />
         </CardContent>
       </Card>
     </div>

@@ -2,9 +2,48 @@
 import { useOrders } from '@/hooks/useOrders';
 import { OrderFilters } from '@/components/orders/OrderFilters';
 import { EmptyOrdersState } from '@/components/orders/EmptyOrdersState';
+import { usePagination } from '@/hooks/usePagination';
+import { PaginationControls } from '@/components/ui/pagination-controls';
+import { useState } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 
 const Orders = () => {
   const { orders, loading, retryPayment } = useOrders();
+  const [activeTab, setActiveTab] = useState('all');
+
+  // Filter orders berdasarkan tab aktif
+  const getFilteredOrders = () => {
+    switch (activeTab) {
+      case 'pending':
+        return orders.filter(order => order.status === 'pending');
+      case 'confirmed':
+        return orders.filter(order => order.status === 'confirmed');
+      case 'preparing':
+        return orders.filter(order => order.status === 'preparing');
+      case 'delivered':
+        return orders.filter(order => order.status === 'delivered');
+      default:
+        return orders;
+    }
+  };
+
+  const filteredOrders = getFilteredOrders();
+
+  // Pagination
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedOrders,
+    goToPage,
+    canGoNext,
+    canGoPrev,
+    startIndex,
+    endIndex,
+    totalItems
+  } = usePagination({
+    data: filteredOrders,
+    itemsPerPage: 12
+  });
 
   if (loading) {
     return (
@@ -26,7 +65,27 @@ const Orders = () => {
       {orders.length === 0 ? (
         <EmptyOrdersState />
       ) : (
-        <OrderFilters orders={orders} onRetryPayment={retryPayment} />
+        <>
+          <OrderFilters 
+            orders={paginatedOrders} 
+            onRetryPayment={retryPayment}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          />
+          
+          {/* Pagination Controls */}
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={goToPage}
+            canGoNext={canGoNext}
+            canGoPrev={canGoPrev}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            totalItems={totalItems}
+            itemLabel="pesanan"
+          />
+        </>
       )}
     </div>
   );

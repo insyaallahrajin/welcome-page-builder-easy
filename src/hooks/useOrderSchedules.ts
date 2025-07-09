@@ -53,17 +53,18 @@ export const useOrderSchedules = () => {
     // Check cutoff time
     if (schedule) {
       const cutoffDate = schedule.cutoff_date ? new Date(schedule.cutoff_date) : new Date(date);
-      cutoffDate.setDate(cutoffDate.getDate() - 1); // H-1
+      // H+1 (day after delivery date)
+      cutoffDate.setDate(cutoffDate.getDate());
       
       const [hours, minutes] = schedule.cutoff_time.split(':');
       cutoffDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
       
       if (new Date() > cutoffDate) return true;
     } else {
-      // Default: disable if it's past 15:00 on H-1
+      // Default: disable if it's past 10:00 on H+1
       const cutoffDate = new Date(date);
-      cutoffDate.setDate(cutoffDate.getDate() - 1);
-      cutoffDate.setHours(15, 0, 0, 0);
+      cutoffDate.setDate(cutoffDate.getDate());
+      cutoffDate.setHours(5, 0, 0, 0);
       
       if (new Date() > cutoffDate) return true;
     }
@@ -94,7 +95,8 @@ export const useOrderSchedules = () => {
     // Check cutoff time
     if (schedule) {
       const cutoffDate = schedule.cutoff_date ? new Date(schedule.cutoff_date) : new Date(date);
-      cutoffDate.setDate(cutoffDate.getDate() - 1); // H-1
+      // H+1 (day after delivery date)
+      cutoffDate.setDate(cutoffDate.getDate());
       
       const [hours, minutes] = schedule.cutoff_time.split(':');
       cutoffDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);

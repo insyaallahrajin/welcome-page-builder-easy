@@ -8,6 +8,8 @@ import { toast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { CashPayment } from '@/components/cashier/CashPayment';
 import { formatPrice, formatDate } from '@/utils/orderUtils';
+import { usePagination } from '@/hooks/usePagination';
+import { PaginationControls } from '@/components/ui/pagination-controls';
 import { Search, DollarSign, Receipt, TrendingUp } from 'lucide-react';
 
 interface Order {
@@ -45,6 +47,24 @@ const CashierDashboard = () => {
     cashPayments: 0
   });
   const [loading, setLoading] = useState(true);
+
+  // Pagination untuk filtered orders
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedOrders,
+    goToPage,
+    nextPage,
+    prevPage,
+    canGoNext,
+    canGoPrev,
+    startIndex,
+    endIndex,
+    totalItems
+  } = usePagination({
+    data: filteredOrders,
+    itemsPerPage: 15
+  });
 
   useEffect(() => {
     fetchOrders();
@@ -268,7 +288,7 @@ const CashierDashboard = () => {
 
       {/* Orders List */}
       <div className="space-y-4">
-        {filteredOrders.map((order) => (
+        {paginatedOrders.map((order) => (
           <Card key={order.id}>
             <CardContent className="p-6">
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-center">
@@ -335,6 +355,19 @@ const CashierDashboard = () => {
           </Card>
         ))}
       </div>
+
+      {/* Pagination Controls */}
+      <PaginationControls
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={goToPage}
+        canGoNext={canGoNext}
+        canGoPrev={canGoPrev}
+        startIndex={startIndex}
+        endIndex={endIndex}
+        totalItems={totalItems}
+        itemLabel="pesanan"
+      />
 
       {filteredOrders.length === 0 && (
         <Card className="text-center py-12">

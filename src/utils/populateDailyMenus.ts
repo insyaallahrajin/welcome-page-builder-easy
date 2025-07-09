@@ -38,7 +38,7 @@ export const populateDailyMenus = async () => {
             max_orders: 100, // Default max orders per day
             current_orders: 0,
             cutoff_date: dateStr,
-            cutoff_time: '10:00:00',
+            cutoff_time: '05:00:00',
             notes: 'Auto-generated schedule'
           }, {
             onConflict: 'date'

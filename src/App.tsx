@@ -66,10 +66,20 @@ function AppContent() {
           element={
             <ProtectedRoute>
               <Routes>
+                {/* Role-based default route */}
+                <Route path="/" element={
+                  userRole === 'admin' ? <Navigate to="/admin" replace /> :
+                  userRole === 'cashier' ? <Navigate to="/cashier" replace /> :
+                  <><Navbar /><Index /></>
+                } />
+                
                 {/* Parent routes */}
-                <Route path="/" element={<><Navbar /><Index /></>} />
-                <Route path="/orders" element={<><Navbar /><Orders /></>} />
-                <Route path="/children" element={<><Navbar /><Children /></>} />
+                {userRole === 'parent' && (
+                  <>
+                    <Route path="/orders" element={<><Navbar /><Orders /></>} />
+                    <Route path="/children" element={<><Navbar /><Children /></>} />
+                  </>
+                )}
                 
                 {/* Admin routes */}
                 {userRole === 'admin' && (
@@ -93,8 +103,14 @@ function AppContent() {
                   </>
                 )}
                 
-                {/* Default route */}
-                <Route path="*" element={<Navigate to="/" />} />
+                {/* Default route - redirect to appropriate dashboard */}
+                <Route path="*" element={
+                  <Navigate to={
+                    userRole === 'admin' ? '/admin' :
+                    userRole === 'cashier' ? '/cashier' :
+                    '/'
+                  } replace />
+                } />
               </Routes>
             </ProtectedRoute>
           }
