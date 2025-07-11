@@ -8,6 +8,7 @@ export interface Order {
   payment_status: string;
   notes: string | null;
   created_at: string;
+  delivery_date: string | null;
   midtrans_order_id: string | null;
   order_items: {
     id: string;

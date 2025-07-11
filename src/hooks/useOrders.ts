@@ -22,6 +22,7 @@ interface Order {
   status: string | null;
   payment_status: string | null;
   created_at: string;
+  delivery_date: string | null;
   notes: string | null;
   midtrans_order_id: string | null;
   order_items: OrderItem[];
@@ -83,15 +84,23 @@ export const useOrders = () => {
 
   const retryPayment = async (order: Order) => {
     try {
-      // Generate new order ID if not exists
-      const orderId = order.midtrans_order_id || `ORDER-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // Use existing midtrans_order_id if available, otherwise generate new one
+      let orderId = order.midtrans_order_id;
       
-      // Update order with new midtrans_order_id if it was null
-      if (!order.midtrans_order_id) {
-        await supabase
+      if (!orderId) {
+        // Generate new order ID only if doesn't exist
+        orderId = `ORDER-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Update order with new midtrans_order_id
+        const { error: updateError } = await supabase
           .from('orders')
           .update({ midtrans_order_id: orderId })
           .eq('id', order.id);
+          
+        if (updateError) {
+          console.error('Error updating order:', updateError);
+          throw updateError;
+        }
       }
 
       const customerDetails = {
@@ -107,7 +116,7 @@ export const useOrders = () => {
         name: item.menu_items?.name || 'Unknown Item',
       }));
 
-      console.log('Calling create-payment with:', {
+      console.log('Calling create-payment with existing order ID:', {
         orderId,
         amount: order.total_amount,
         customerDetails,
