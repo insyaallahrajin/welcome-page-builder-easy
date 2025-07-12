@@ -4,10 +4,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/components/ui/use-toast';
 
-interface OrderItem {
+interface OrderLineItem {
   id: string;
+  child_id: string | null;
+  child_name: string;
+  child_class: string | null;
+  menu_item_id: string;
   quantity: number;
-  price: number;
+  unit_price: number;
+  total_price: number | null;
+  delivery_date: string;
+  order_date: string;
+  notes: string | null;
   menu_items: {
     name: string;
     image_url: string;
@@ -26,7 +34,7 @@ interface Order {
   notes: string | null;
   midtrans_order_id: string | null;
   snap_token: string | null;
-  order_items: OrderItem[];
+  order_line_items: OrderLineItem[];
 }
 
 export const useOrders = () => {
@@ -46,10 +54,18 @@ export const useOrders = () => {
         .from('orders')
         .select(`
           *,
-          order_items (
+          order_line_items (
             id,
+            child_id,
+            child_name,
+            child_class,
+            menu_item_id,
             quantity,
-            price,
+            unit_price,
+            total_price,
+            delivery_date,
+            order_date,
+            notes,
             menu_items (
               name,
               image_url
@@ -64,7 +80,7 @@ export const useOrders = () => {
       // Transform the data to match our interface
       const transformedOrders = (data || []).map(order => ({
         ...order,
-        order_items: order.order_items.map(item => ({
+        order_line_items: order.order_line_items.map(item => ({
           ...item,
           menu_items: item.menu_items || { name: 'Unknown Item', image_url: '' }
         }))
@@ -147,9 +163,9 @@ export const useOrders = () => {
         phone: user?.user_metadata?.phone || '08123456789',
       };
 
-      const itemDetails = order.order_items.map(item => ({
+      const itemDetails = order.order_line_items.map(item => ({
         id: item.id,
-        price: item.price,
+        price: item.unit_price,
         quantity: item.quantity,
         name: item.menu_items?.name || 'Unknown Item',
       }));

@@ -141,68 +141,57 @@ const Index = () => {
     }
 
     try {
-      // Group cart items by date and child
-      const ordersByDate = cart.reduce((acc, item) => {
-        const key = `${item.date}-${item.child_id}`;
-        if (!acc[key]) {
-          acc[key] = {
-            date: item.date,
-            child_id: item.child_id,
-            items: []
-          };
-        }
-        acc[key].items.push(item);
-        return acc;
-      }, {} as any);
+      // Group cart items by child and date for better organization, but create single order
+      const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      const midtransOrderId = `ORDER-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-      for (const orderGroup of Object.values(ordersByDate) as any[]) {
-        const selectedChildData = children.find(c => c.id === orderGroup.child_id);
-        const totalAmount = orderGroup.items.reduce((sum: number, item: CartItem) => 
-          sum + (item.price * item.quantity), 0
-        );
+      // Create single order for all items
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          user_id: user?.id,
+          order_number: midtransOrderId,
+          total_amount: totalAmount,
+          midtrans_order_id: midtransOrderId,
+          status: 'pending',
+          payment_status: 'pending',
+          // Use summary info for main order fields
+          child_name: cart.length === 1 ? children.find(c => c.id === cart[0].child_id)?.name : `${new Set(cart.map(item => item.child_id)).size} Anak`,
+          child_class: cart.length === 1 ? children.find(c => c.id === cart[0].child_id)?.class_name : 'Multi Kelas'
+        })
+        .select()
+        .single();
 
-        // Generate unique order ID
-        const midtransOrderId = `ORDER-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      if (orderError) throw orderError;
 
-        // Create order
-        const { data: order, error: orderError } = await supabase
-          .from('orders')
-          .insert({
-            user_id: user?.id,
-            order_number: midtransOrderId,
-            child_name: selectedChildData?.name,
-            child_class: selectedChildData?.class_name,
-            total_amount: totalAmount,
-            delivery_date: orderGroup.date,
-            midtrans_order_id: midtransOrderId,
-            status: 'pending',
-            payment_status: 'pending'
-          })
-          .select()
-          .single();
-
-        if (orderError) throw orderError;
-
-        // Create order items using the correct menu_item_id from the cart items
-        const orderItems = orderGroup.items.map((item: CartItem) => ({
+      // Create order line items for each cart item
+      const orderLineItems = cart.map(item => {
+        const childData = children.find(c => c.id === item.child_id);
+        return {
           order_id: order.id,
+          child_id: item.child_id,
+          child_name: childData?.name || 'Unknown',
+          child_class: childData?.class_name || null,
           menu_item_id: item.food_item_id,
           quantity: item.quantity,
-          price: item.price
-        }));
+          unit_price: item.price,
+          total_price: item.price * item.quantity,
+          delivery_date: item.date,
+          order_date: format(new Date(), 'yyyy-MM-dd')
+        };
+      });
 
-        const { error: itemsError } = await supabase
-          .from('order_items')
-          .insert(orderItems);
+      const { error: lineItemsError } = await supabase
+        .from('order_line_items')
+        .insert(orderLineItems);
 
-        if (itemsError) throw itemsError;
+      if (lineItemsError) throw lineItemsError;
 
-        console.log('Order created successfully:', order);
-      }
+      console.log('Order created successfully with line items:', order);
 
       toast({
         title: "Pesanan berhasil dibuat",
-        description: "Pesanan Anda telah berhasil dibuat",
+        description: `Pesanan dengan ${cart.length} item berhasil dibuat untuk pembayaran`,
       });
 
       // Clear cart

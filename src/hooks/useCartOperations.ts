@@ -78,15 +78,6 @@ export const useCartOperations = () => {
   };
 
   const handleCheckout = async (items: CartItem[], onSuccess: () => void) => {
-    if (!selectedChildId) {
-      toast({
-        title: "Error",
-        description: "Pilih anak untuk pesanan ini",
-        variant: "destructive",
-      });
-      return;
-    }
-
     if (items.length === 0) {
       toast({
         title: "Error",
@@ -99,11 +90,13 @@ export const useCartOperations = () => {
     setLoading(true);
 
     try {
-      const selectedChild = children.find(child => child.id === selectedChildId);
       const totalAmount = items.reduce((total, item) => total + (item.price * item.quantity), 0);
       const orderId = `ORDER-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-      // Create order first
+      // Create single order for all items (multi-child, multi-date support)
+      const uniqueChildren = Array.from(new Set(items.map(item => item.child_id)));
+      const primaryChild = children.find(child => child.id === items[0].child_id);
+      
       const orderData = {
         user_id: user?.id,
         total_amount: totalAmount,
@@ -111,8 +104,8 @@ export const useCartOperations = () => {
         status: 'pending',
         payment_status: 'pending',
         order_number: orderId,
-        child_name: selectedChild?.name || null,
-        child_class: selectedChild?.class_name || null,
+        child_name: uniqueChildren.length === 1 ? primaryChild?.name : `${uniqueChildren.length} Anak`,
+        child_class: uniqueChildren.length === 1 ? primaryChild?.class_name : 'Multi Kelas',
         midtrans_order_id: orderId
       };
 
@@ -124,19 +117,28 @@ export const useCartOperations = () => {
 
       if (orderError) throw orderError;
 
-      // Create order items using the correct menu_item_id from the cart items
-      const orderItems = items.map(item => ({
-        order_id: order.id,
-        menu_item_id: item.menu_item_id,
-        quantity: item.quantity,
-        price: item.price
-      }));
+      // Create order line items for each cart item with proper child and date info
+      const orderLineItems = items.map(item => {
+        const childData = children.find(c => c.id === item.child_id);
+        return {
+          order_id: order.id,
+          child_id: item.child_id,
+          child_name: childData?.name || 'Unknown',
+          child_class: childData?.class_name || null,
+          menu_item_id: item.menu_item_id,
+          quantity: item.quantity,
+          unit_price: item.price,
+          total_price: item.price * item.quantity,
+          delivery_date: item.date,
+          order_date: new Date().toISOString().split('T')[0]
+        };
+      });
 
-      const { error: itemsError } = await supabase
-        .from('order_items')
-        .insert(orderItems);
+      const { error: lineItemsError } = await supabase
+        .from('order_line_items')
+        .insert(orderLineItems);
 
-      if (itemsError) throw itemsError;
+      if (lineItemsError) throw lineItemsError;
 
       // Prepare payment data
       const customerDetails = {
@@ -145,11 +147,11 @@ export const useCartOperations = () => {
         phone: user?.user_metadata?.phone || '08123456789',
       };
 
-      const itemDetails = items.map(item => ({
-        id: item.id,
+      const itemDetails = items.map((item, index) => ({
+        id: `${item.id}-${index}`,
         price: item.price,
         quantity: item.quantity,
-        name: item.name,
+        name: `${item.name} (${children.find(c => c.id === item.child_id)?.name})`,
       }));
 
       // Create payment transaction
