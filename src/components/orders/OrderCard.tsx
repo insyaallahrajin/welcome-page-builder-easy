@@ -1,181 +1,215 @@
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
-import { User, Calendar, MapPin, Users } from 'lucide-react';
 import { Order } from '@/types/order';
-import { 
-  getStatusColor, 
-  getPaymentStatusColor, 
-  getStatusText, 
-  getPaymentStatusText,
-  formatPrice,
-  formatDate 
-} from '@/utils/orderUtils';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Calendar, CreditCard, Users, Eye } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useNavigate } from 'react-router-dom';
 
 interface OrderCardProps {
   order: Order;
+  onRetryPayment?: (order: Order) => void;
+  showCheckbox?: boolean;
   isSelected?: boolean;
   onSelectionChange?: (orderId: string, selected: boolean) => void;
-  showCheckbox?: boolean;
 }
 
-export const OrderCard = ({ order, isSelected = false, onSelectionChange, showCheckbox = false }: OrderCardProps) => {
-  // Group line items by child and date for better display
-  const groupedItems = order.order_line_items.reduce((acc, item) => {
-    const key = `${item.child_name}-${item.delivery_date}`;
-    if (!acc[key]) {
-      acc[key] = {
+export const OrderCard = ({
+  order,
+  onRetryPayment,
+  showCheckbox = false,
+  isSelected = false,
+  onSelectionChange
+}: OrderCardProps) => {
+  const navigate = useNavigate();
+
+  const getStatusColor = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'paid':
+      case 'success':
+      case 'delivered':
+        return 'bg-green-100 text-green-800';
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'failed':
+      case 'cancelled':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
+  // Group order line items by child
+  const groupedItems = order.order_line_items?.reduce((acc: any, item) => {
+    const childKey = `${item.child_name}_${item.child_class}`;
+    if (!acc[childKey]) {
+      acc[childKey] = {
         child_name: item.child_name,
         child_class: item.child_class,
-        delivery_date: item.delivery_date,
         items: []
       };
     }
-    acc[key].items.push(item);
+    acc[childKey].items.push(item);
     return acc;
-  }, {} as any);
+  }, {}) || {};
 
-  const uniqueChildren = Array.from(new Set(order.order_line_items.map(item => item.child_name)));
-  const uniqueDates = Array.from(new Set(order.order_line_items.map(item => item.delivery_date)));
+  const uniqueDeliveryDates = [...new Set(
+    order.order_line_items?.map(item => item.delivery_date) || []
+  )].sort();
+
+  const totalChildren = Object.keys(groupedItems).length;
+  
+  const handleViewDetail = () => {
+    navigate(`/orders/${order.id}`);
+  };
 
   return (
-    <Card className={`hover:shadow-lg transition-shadow ${isSelected ? 'ring-2 ring-orange-500' : ''}`}>
-      <CardHeader>
-        <div className="flex justify-between items-start">
-          <div className="flex items-start space-x-3 flex-1">
+    <Card className="hover:shadow-md transition-shadow duration-200">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
             {showCheckbox && (
               <Checkbox
                 checked={isSelected}
-                onCheckedChange={(checked) => onSelectionChange?.(order.id, !!checked)}
-                className="mt-1"
+                onCheckedChange={(checked) => {
+                  onSelectionChange?.(order.id, checked as boolean);
+                }}
               />
             )}
-            <div className="space-y-2 flex-1">
-              <CardTitle className="text-lg flex items-center">
-                <Users className="h-5 w-5 mr-2 text-orange-600" />
-                {uniqueChildren.length === 1 ? uniqueChildren[0] : `${uniqueChildren.length} Anak`}
-              </CardTitle>
-              <CardDescription className="space-y-1">
-                <div className="flex items-center text-sm text-gray-600">
-                  <Calendar className="h-4 w-4 mr-1" />
-                  {uniqueDates.length === 1 
-                    ? `Pengiriman: ${formatDate(uniqueDates[0])}`
-                    : `${uniqueDates.length} Tanggal Pengiriman`
-                  }
-                </div>
-                <div className="flex items-center text-sm text-gray-600">
-                  <MapPin className="h-4 w-4 mr-1" />
-                  Dipesan: {formatDate(order.created_at)}
-                </div>
-              </CardDescription>
+            <div>
+              <h3 className="font-semibold text-sm md:text-base">
+                #{order.order_number}
+              </h3>
+              <p className="text-xs md:text-sm text-gray-600">
+                {formatDate(order.created_at)}
+              </p>
             </div>
           </div>
-          <div className="text-right space-y-1">
-            <Badge className={getStatusColor(order.status)}>
-              {getStatusText(order.status)}
+          <div className="flex flex-col items-end gap-2">
+            <Badge className={getStatusColor(order.payment_status || '')}>
+              {order.payment_status?.toUpperCase() || 'PENDING'}
             </Badge>
-            <Badge className={getPaymentStatusColor(order.payment_status)}>
-              {getPaymentStatusText(order.payment_status)}
-            </Badge>
+            <p className="font-bold text-sm md:text-lg text-orange-600">
+              {formatCurrency(order.total_amount)}
+            </p>
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {/* Order Items grouped by child and date */}
-          <div className="space-y-3">
-            <h4 className="font-medium text-sm text-gray-700">Detail Pesanan:</h4>
-            {Object.values(groupedItems).map((group: any, groupIndex: number) => (
-              <div key={groupIndex} className="border rounded-lg p-3 bg-gray-50">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <p className="font-medium text-sm text-orange-600">
-                      <User className="h-4 w-4 inline mr-1" />
-                      {group.child_name}
-                    </p>
-                    {group.child_class && (
-                      <p className="text-xs text-gray-600">Kelas {group.child_class}</p>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-gray-600">
-                      <Calendar className="h-3 w-3 inline mr-1" />
-                      {formatDate(group.delivery_date)}
-                    </p>
-                  </div>
+
+      <CardContent className="pt-0">
+        {/* Order Summary */}
+        <div className="flex items-center gap-4 text-xs md:text-sm text-gray-600 mb-3">
+          <div className="flex items-center gap-1">
+            <Users className="h-3 w-3 md:h-4 md:w-4" />
+            <span>{totalChildren} anak</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Calendar className="h-3 w-3 md:h-4 md:w-4" />
+            <span>{uniqueDeliveryDates.length} hari</span>
+          </div>
+        </div>
+
+        {/* Children Details */}
+        <div className="space-y-2 mb-4">
+          {Object.entries(groupedItems).slice(0, 2).map(([childKey, childData]: [string, any]) => (
+            <div key={childKey} className="bg-gray-50 rounded-lg p-2 md:p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="font-medium text-sm">{childData.child_name}</p>
+                  <p className="text-xs text-gray-600">{childData.child_class}</p>
                 </div>
-                
-                <div className="space-y-2">
-                  {group.items.map((item: any) => (
-                    <div key={item.id} className="flex items-center justify-between p-2 bg-white rounded">
-                      <div className="flex items-center space-x-2">
-                        <img
-                          src={item.menu_items?.image_url || '/placeholder.svg'}
-                          alt={item.menu_items?.name || 'Unknown Item'}
-                          className="w-8 h-8 object-cover rounded"
-                        />
-                        <div>
-                          <p className="font-medium text-xs">{item.menu_items?.name || 'Unknown Item'}</p>
-                          <p className="text-xs text-gray-600">
-                            {formatPrice(item.unit_price)} per item
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-medium text-xs">{item.quantity}x</p>
-                        <p className="text-xs text-gray-600">
-                          {formatPrice(item.total_price || (item.unit_price * item.quantity))}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <p className="text-xs text-gray-600">
+                  {childData.items.length} item
+                </p>
               </div>
-            ))}
-          </div>
-
-          {/* Notes */}
-          {order.notes && (
-            <div className="p-3 bg-blue-50 rounded-lg">
-              <p className="text-sm text-blue-800">
-                <strong>Catatan:</strong> {order.notes}
-              </p>
+              
+              {/* Show delivery dates for this child */}
+              <div className="flex flex-wrap gap-1">
+                {[...new Set(childData.items.map((item: any) => item.delivery_date))]
+                  .sort()
+                  .slice(0, 3)
+                  .map((date: string) => (
+                    <span key={date} className="text-xs bg-white px-2 py-1 rounded">
+                      📅 {formatDate(date)}
+                    </span>
+                  ))}
+              </div>
             </div>
-          )}
-
-          {/* Order Summary */}
-          <div className="border-t pt-3 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Total {order.order_line_items.length} Item:</span>
-              <span>{formatPrice(order.total_amount)}</span>
-            </div>
-            <div className="flex justify-between items-center font-semibold text-lg">
-              <span>Total Pembayaran:</span>
-              <span className="text-orange-600">
-                {formatPrice(order.total_amount)}
-              </span>
-            </div>
-          </div>
-
-          {/* Order Information */}
-          {order.midtrans_order_id && (
-            <div className="p-3 bg-gray-50 rounded-lg">
-              <p className="text-sm text-gray-600">
-                <strong>Order ID:</strong> {order.midtrans_order_id}
-              </p>
-            </div>
-          )}
-
-          {/* Payment Status Note */}
-          {order.payment_status === 'pending' && (
-            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-sm text-yellow-800">
-                <strong>Status:</strong> Menunggu pembayaran - klik untuk melanjutkan pembayaran.
-              </p>
-            </div>
+          ))}
+          
+          {Object.keys(groupedItems).length > 2 && (
+            <p className="text-xs text-gray-500 text-center">
+              +{Object.keys(groupedItems).length - 2} anak lainnya
+            </p>
           )}
         </div>
+
+        {/* Delivery Dates Summary */}
+        {uniqueDeliveryDates.length > 0 && (
+          <div className="mb-4">
+            <p className="text-xs text-gray-600 mb-2">Tanggal Pengantaran:</p>
+            <div className="flex flex-wrap gap-1">
+              {uniqueDeliveryDates.slice(0, 3).map(date => (
+                <span key={date} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                  {formatDate(date)}
+                </span>
+              ))}
+              {uniqueDeliveryDates.length > 3 && (
+                <span className="text-xs text-gray-500">
+                  +{uniqueDeliveryDates.length - 3} hari lagi
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleViewDetail}
+            className="flex-1"
+          >
+            <Eye className="mr-2 h-4 w-4" />
+            Lihat Detail
+          </Button>
+          
+          {order.payment_status === 'pending' && onRetryPayment && (
+            <Button 
+              size="sm" 
+              onClick={() => onRetryPayment(order)}
+              className="flex-1"
+            >
+              <CreditCard className="mr-2 h-4 w-4" />
+              Bayar Sekarang
+            </Button>
+          )}
+        </div>
+
+        {order.parent_notes && (
+          <div className="mt-3 p-2 bg-yellow-50 rounded text-xs">
+            <p className="text-gray-600 mb-1">Catatan:</p>
+            <p className="text-gray-800">{order.parent_notes}</p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
