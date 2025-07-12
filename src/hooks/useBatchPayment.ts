@@ -60,10 +60,10 @@ export const useBatchPayment = () => {
       // Create combined item details from all orders for the invoice
       const itemDetails = [];
       for (const order of pendingOrders) {
-        for (const item of order.order_items) {
+        for (const item of order.order_line_items) {
           itemDetails.push({
             id: `${order.id}-${item.id}`,
-            price: item.price,
+            price: item.unit_price,
             quantity: item.quantity,
             name: `${item.menu_items?.name || 'Item'} - ${order.child_name}`,
           });

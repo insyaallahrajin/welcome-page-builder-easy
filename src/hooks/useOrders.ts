@@ -3,39 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/components/ui/use-toast';
-
-interface OrderLineItem {
-  id: string;
-  child_id: string | null;
-  child_name: string;
-  child_class: string | null;
-  menu_item_id: string;
-  quantity: number;
-  unit_price: number;
-  total_price: number | null;
-  delivery_date: string;
-  order_date: string;
-  notes: string | null;
-  menu_items: {
-    name: string;
-    image_url: string;
-  } | null;
-}
-
-interface Order {
-  id: string;
-  child_name: string | null;
-  child_class: string | null;
-  total_amount: number;
-  status: string | null;
-  payment_status: string | null;
-  created_at: string;
-  delivery_date: string | null;
-  notes: string | null;
-  midtrans_order_id: string | null;
-  snap_token: string | null;
-  order_line_items: OrderLineItem[];
-}
+import { Order, OrderLineItem } from '@/types/order';
 
 export const useOrders = () => {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -56,6 +24,7 @@ export const useOrders = () => {
           *,
           order_line_items (
             id,
+            order_id,
             child_id,
             child_name,
             child_class,
@@ -66,6 +35,8 @@ export const useOrders = () => {
             delivery_date,
             order_date,
             notes,
+            created_at,
+            updated_at,
             menu_items (
               name,
               image_url
@@ -80,7 +51,7 @@ export const useOrders = () => {
       // Transform the data to match our interface
       const transformedOrders = (data || []).map(order => ({
         ...order,
-        order_line_items: order.order_line_items.map(item => ({
+        order_line_items: order.order_line_items.map((item: any) => ({
           ...item,
           menu_items: item.menu_items || { name: 'Unknown Item', image_url: '' }
         }))
