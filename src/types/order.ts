@@ -17,6 +17,7 @@ export interface OrderLineItem {
   menu_items: {
     name: string;
     image_url: string;
+    description?: string;
   } | null;
 }
 
@@ -33,4 +34,15 @@ export interface Order {
   midtrans_order_id: string | null;
   snap_token: string | null;
   order_line_items: OrderLineItem[];
+  order_number: string;
+  parent_notes: string | null;
+  payment_method: string | null;
+  payments?: {
+    id: string;
+    amount: number;
+    payment_method: string;
+    status: string | null;
+    transaction_id: string;
+    created_at: string;
+  }[];
 }

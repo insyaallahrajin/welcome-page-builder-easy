@@ -7,18 +7,58 @@ import { CartItem } from '@/types/cart';
 
 declare global {
   interface Window {
-    snap: any;
+    snap: {
+      pay: (token: string, options?: {
+        onSuccess?: (result: any) => void;
+        onPending?: (result: any) => void;
+        onError?: (result: any) => void;
+        onClose?: () => void;
+      }) => void;
+    };
   }
+}
+
+interface Child {
+  id: string;
+  name: string;
+  class_name: string;
 }
 
 export const useCartOperations = () => {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [children, setChildren] = useState<Child[]>([]);
+  const [selectedChildId, setSelectedChildId] = useState('');
+  const [notes, setNotes] = useState('');
+  const [loading, setLoading] = useState(false);
   const { user } = useAuth();
+
+  const fetchChildren = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('children')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+      setChildren(data || []);
+    } catch (error) {
+      console.error('Error fetching children:', error);
+      toast({
+        title: "Error",
+        description: "Gagal memuat data anak",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleCheckout = async (
     cartItems: CartItem[],
-    totalAmount: number,
-    parentNotes?: string
+    onSuccess?: () => void
   ) => {
     if (!user) {
       toast({
@@ -29,11 +69,25 @@ export const useCartOperations = () => {
       return;
     }
 
+    if (!selectedChildId) {
+      toast({
+        title: "Error",
+        description: "Silakan pilih anak terlebih dahulu",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsCheckingOut(true);
 
     try {
+      const totalAmount = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      
       // Generate order number
       const orderNumber = `ORDER-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Get selected child info
+      const selectedChild = children.find(child => child.id === selectedChildId);
       
       // Create main order first
       const { data: orderData, error: orderError } = await supabase
@@ -44,7 +98,9 @@ export const useCartOperations = () => {
           total_amount: totalAmount,
           status: 'pending',
           payment_status: 'pending',
-          parent_notes: parentNotes
+          parent_notes: notes,
+          child_name: selectedChild?.name || '',
+          child_class: selectedChild?.class_name || ''
         })
         .select()
         .single();
@@ -59,14 +115,14 @@ export const useCartOperations = () => {
       // Create order line items
       const orderLineItems = cartItems.map(item => ({
         order_id: orderData.id,
-        child_id: item.childId,
-        child_name: item.childName,
-        child_class: item.childClass,
-        menu_item_id: item.menuItemId,
+        child_id: selectedChildId,
+        child_name: selectedChild?.name || '',
+        child_class: selectedChild?.class_name || '',
+        menu_item_id: item.menu_item_id,
         quantity: item.quantity,
         unit_price: item.price,
         total_price: item.price * item.quantity,
-        delivery_date: item.deliveryDate,
+        delivery_date: item.delivery_date || item.date || new Date().toISOString().split('T')[0],
         order_date: new Date().toISOString().split('T')[0]
       }));
 
@@ -104,10 +160,10 @@ export const useCartOperations = () => {
 
       // Prepare item details for Midtrans
       const itemDetails = cartItems.map(item => ({
-        id: item.menuItemId,
+        id: item.menu_item_id,
         price: item.price,
         quantity: item.quantity,
-        name: `${item.menuItemName} - ${item.childName}`,
+        name: `${item.name} - ${selectedChild?.name}`,
       }));
 
       console.log('Calling create-payment:', {
@@ -154,12 +210,14 @@ export const useCartOperations = () => {
                 title: "Pembayaran Berhasil!",
                 description: "Pesanan Anda telah berhasil dibuat dan dibayar.",
               });
+              onSuccess?.();
             },
             onPending: () => {
               toast({
                 title: "Pembayaran Tertunda",
                 description: "Pembayaran Anda sedang diproses.",
               });
+              onSuccess?.();
             },
             onError: () => {
               toast({
@@ -192,6 +250,13 @@ export const useCartOperations = () => {
 
   return {
     handleCheckout,
-    isCheckingOut
+    isCheckingOut,
+    children,
+    selectedChildId,
+    setSelectedChildId,
+    notes,
+    setNotes,
+    loading,
+    fetchChildren
   };
 };
