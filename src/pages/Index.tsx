@@ -1,286 +1,376 @@
 
-import { useState, useEffect } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import { CalendarIcon } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Plus, Minus, ShoppingCart, Calendar } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
-import { format } from 'date-fns';
-import { useOrderSchedules } from '@/hooks/useOrderSchedules';
+import { useAuth } from '@/hooks/useAuth';
+import { useCartOperations } from '@/hooks/useCartOperations';
 import { useChildren } from '@/hooks/useChildren';
-import { useDailyMenus } from '@/hooks/useDailyMenus';
 import ChildSelector from '@/components/orderFood/ChildSelector';
 import DateCalendar from '@/components/orderFood/DateCalendar';
-import OrderInfo from '@/components/orderFood/OrderInfo';
-import MenuSelection from '@/components/orderFood/MenuSelection';
-import FloatingCartButton from '@/components/orderFood/FloatingCartButton';
+import { Navbar } from '@/components/Navbar';
+import { FloatingCartButton } from '@/components/orderFood/FloatingCartButton';
+import { Cart } from '@/components/Cart';
+
+interface MenuItem {
+  id: string;
+  name: string;
+  price: number;
+  description: string;
+  image_url: string;
+  is_available: boolean;
+  category_id: string;
+  categories?: {
+    name: string;
+  };
+}
+
+interface Category {
+  id: string;
+  name: string;
+  description: string;
+}
 
 interface CartItem {
   id: string;
   name: string;
   price: number;
   quantity: number;
+  menu_item_id: string;
   date: string;
-  child_id: string;
-  food_item_id: string;
-  image_url?: string;
+  delivery_date: string;
+  child_id?: string;
+  child_name?: string;
+  child_class?: string;
 }
 
 const Index = () => {
-  const [selectedDate, setSelectedDate] = useState<Date>();
-  const [selectedChild, setSelectedChild] = useState<string>('');
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const { user } = useAuth();
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [loading, setLoading] = useState(true);
+  const [isCartOpen, setIsCartOpen] = useState(false);
   
-  const { orderSchedules, loading, isDateDisabled, getDateStatus } = useOrderSchedules();
+  const { user } = useAuth();
   const { children } = useChildren();
-  const { dailyMenus, fetchDailyMenus } = useDailyMenus();
+  const cartOperations = useCartOperations();
 
   useEffect(() => {
-    if (selectedDate) {
-      fetchDailyMenus(selectedDate);
-    }
-  }, [selectedDate]);
+    fetchMenuItems();
+    fetchCategories();
+    cartOperations.fetchChildren();
+  }, []);
 
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0,
-    }).format(price);
+  const fetchMenuItems = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('menu_items')
+        .select(`
+          *,
+          categories (
+            name
+          )
+        `)
+        .eq('is_available', true);
+
+      if (error) throw error;
+      setMenuItems(data || []);
+    } catch (error) {
+      console.error('Error fetching menu items:', error);
+      toast({
+        title: "Error",
+        description: "Gagal memuat menu makanan",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const addToCart = (menu: any) => {
-    if (!selectedChild || !selectedDate) {
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*');
+
+      if (error) throw error;
+      setCategories(data || []);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
+  const filteredMenuItems = useMemo(() => {
+    if (selectedCategory === 'all') {
+      return menuItems;
+    }
+    return menuItems.filter(item => item.category_id === selectedCategory);
+  }, [menuItems, selectedCategory]);
+
+  const addToCart = (menuItem: MenuItem) => {
+    if (!user) {
       toast({
-        title: "Pilih anak dan tanggal",
-        description: "Mohon pilih anak dan tanggal terlebih dahulu",
+        title: "Login Required",
+        description: "Silakan login terlebih dahulu untuk memesan",
         variant: "destructive",
       });
       return;
     }
 
-    // Check if date is still available
-    if (isDateDisabled(selectedDate)) {
+    if (children.length === 0) {
       toast({
-        title: "Tanggal tidak tersedia",
-        description: "Tanggal yang dipilih sudah tidak bisa dipesan",
+        title: "Data Anak Diperlukan",
+        description: "Silakan tambahkan data anak terlebih dahulu",
         variant: "destructive",
       });
       return;
     }
 
-    const dateStr = format(selectedDate, 'yyyy-MM-dd');
-    const cartItemId = `${menu.food_item_id}-${dateStr}-${selectedChild}`;
-    
-    const existingItem = cart.find(item => item.id === cartItemId);
+    const dateString = selectedDate.toISOString().split('T')[0];
+    const existingItem = cartItems.find(
+      item => item.menu_item_id === menuItem.id && item.date === dateString
+    );
 
     if (existingItem) {
-      setCart(cart.map(item =>
-        item.id === cartItemId
+      setCartItems(cartItems.map(item =>
+        item.id === existingItem.id
           ? { ...item, quantity: item.quantity + 1 }
           : item
       ));
     } else {
       const newItem: CartItem = {
-        id: cartItemId,
-        name: menu.food_items.name,
-        price: menu.price,
+        id: `${menuItem.id}-${dateString}-${Date.now()}`,
+        name: menuItem.name,
+        price: menuItem.price,
         quantity: 1,
-        date: dateStr,
-        child_id: selectedChild,
-        food_item_id: menu.food_item_id,
-        image_url: menu.food_items.image_url
+        menu_item_id: menuItem.id,
+        date: dateString,
+        delivery_date: dateString,
       };
-      setCart([...cart, newItem]);
+      setCartItems([...cartItems, newItem]);
     }
 
     toast({
-      title: "Berhasil ditambahkan",
-      description: `${menu.food_items.name} ditambahkan ke keranjang`,
+      title: "Ditambahkan ke Keranjang",
+      description: `${menuItem.name} berhasil ditambahkan`,
     });
   };
 
-  const updateQuantity = (cartItemId: string, newQuantity: number) => {
-    if (newQuantity === 0) {
-      setCart(cart.filter(item => item.id !== cartItemId));
-    } else {
-      setCart(cart.map(item =>
-        item.id === cartItemId
-          ? { ...item, quantity: newQuantity }
+  const removeFromCart = (itemId: string) => {
+    const existingItem = cartItems.find(item => item.id === itemId);
+    
+    if (existingItem && existingItem.quantity > 1) {
+      setCartItems(cartItems.map(item =>
+        item.id === itemId
+          ? { ...item, quantity: item.quantity - 1 }
           : item
       ));
+    } else {
+      setCartItems(cartItems.filter(item => item.id !== itemId));
     }
   };
 
-  const getCartQuantity = (menu: any) => {
-    if (!selectedChild || !selectedDate) return 0;
-    
-    const dateStr = format(selectedDate, 'yyyy-MM-dd');
-    const cartItemId = `${menu.food_item_id}-${dateStr}-${selectedChild}`;
-    const item = cart.find(item => item.id === cartItemId);
-    return item ? item.quantity : 0;
+  const getItemQuantityInCart = (menuItemId: string) => {
+    const dateString = selectedDate.toISOString().split('T')[0];
+    const item = cartItems.find(
+      item => item.menu_item_id === menuItemId && item.date === dateString
+    );
+    return item?.quantity || 0;
   };
 
-  const getTotalCartItems = () => {
-    return cart.reduce((total, item) => total + item.quantity, 0);
+  const totalCartItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+
+  const handleCheckoutSuccess = () => {
+    setCartItems([]);
+    setIsCartOpen(false);
+    toast({
+      title: "Checkout Berhasil!",
+      description: "Pesanan Anda telah berhasil dibuat",
+    });
   };
-
-  const getTotalCartPrice = () => {
-    return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
-  };
-
-  const createOrder = async () => {
-    if (cart.length === 0) {
-      toast({
-        title: "Keranjang kosong",
-        description: "Tambahkan menu terlebih dahulu",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      // Group cart items by child and date for better organization, but create single order
-      const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-      const midtransOrderId = `ORDER-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-      // Create single order for all items
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          user_id: user?.id,
-          order_number: midtransOrderId,
-          total_amount: totalAmount,
-          midtrans_order_id: midtransOrderId,
-          status: 'pending',
-          payment_status: 'pending',
-          // Use summary info for main order fields
-          child_name: cart.length === 1 ? children.find(c => c.id === cart[0].child_id)?.name : `${new Set(cart.map(item => item.child_id)).size} Anak`,
-          child_class: cart.length === 1 ? children.find(c => c.id === cart[0].child_id)?.class_name : 'Multi Kelas'
-        })
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      // Create order line items for each cart item
-      const orderLineItems = cart.map(item => {
-        const childData = children.find(c => c.id === item.child_id);
-        return {
-          order_id: order.id,
-          child_id: item.child_id,
-          child_name: childData?.name || 'Unknown',
-          child_class: childData?.class_name || null,
-          menu_item_id: item.food_item_id,
-          quantity: item.quantity,
-          unit_price: item.price,
-          total_price: item.price * item.quantity,
-          delivery_date: item.date,
-          order_date: format(new Date(), 'yyyy-MM-dd')
-        };
-      });
-
-      const { error: lineItemsError } = await supabase
-        .from('order_line_items')
-        .insert(orderLineItems);
-
-      if (lineItemsError) throw lineItemsError;
-
-      console.log('Order created successfully with line items:', order);
-
-      toast({
-        title: "Pesanan berhasil dibuat",
-        description: `Pesanan dengan ${cart.length} item berhasil dibuat untuk pembayaran`,
-      });
-
-      // Clear cart
-      setCart([]);
-    } catch (error: any) {
-      console.error('Error creating order:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Gagal membuat pesanan",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const selectedChild_data = children.find(c => c.id === selectedChild);
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-orange-500"></div>
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="flex justify-center items-center min-h-[calc(100vh-80px)]">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-orange-500"></div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-6">
-      <div className="text-center mb-6 md:mb-8">
-        <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent mb-2">
-          Menu & Pemesanan Katering
-        </h1>
-        <p className="text-gray-600 text-sm md:text-base">Pilih tanggal dan anak untuk melihat menu yang tersedia</p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
-        {/* Left Panel - Child Selection & Calendar */}
-        <div className="space-y-4 md:space-y-6">
-          <ChildSelector
-            children={children}
-            selectedChild={selectedChild}
-            onChildSelect={setSelectedChild}
-          />
-
-          <DateCalendar
-            selectedDate={selectedDate}
-            onDateSelect={setSelectedDate}
-            orderSchedules={orderSchedules}
-            isDateDisabled={isDateDisabled}
-          />
-
-          {/* Selected Info */}
-          {selectedChild && selectedDate && (
-            <OrderInfo
-              selectedChild={selectedChild_data}
-              selectedDate={selectedDate}
-              getDateStatus={getDateStatus}
-            />
-          )}
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+      
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent mb-4">
+            Selamat Datang di Kantin Sekolah
+          </h1>
+          <p className="text-gray-600 text-lg">
+            Pesan makanan untuk anak Anda dengan mudah dan praktis
+          </p>
         </div>
 
-        {/* Right Panel - Menu Selection */}
-        <div>
-          {selectedDate && selectedChild ? (
-            <MenuSelection
-              selectedDate={selectedDate}
-              dailyMenus={dailyMenus}
-              getCartQuantity={getCartQuantity}
-              isDateDisabled={isDateDisabled}
-              addToCart={addToCart}
-              updateQuantity={updateQuantity}
-              formatPrice={formatPrice}
-              selectedChild={selectedChild}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          {/* Sidebar */}
+          <div className="lg:col-span-1 space-y-6">
+            <ChildSelector 
+              children={children}
+              selectedChild={cartOperations.selectedChildId}
+              onChildSelect={cartOperations.setSelectedChildId}
             />
-          ) : (
+            
+            <DateCalendar 
+              selectedDate={selectedDate}
+              onDateSelect={setSelectedDate}
+            />
+
+            {/* Category Filter */}
             <Card>
-              <CardContent className="text-center py-8 md:py-12">
-                <CalendarIcon className="h-12 w-12 md:h-16 md:w-16 mx-auto text-gray-400 mb-4" />
-                <p className="text-gray-500 text-sm md:text-base">Pilih anak dan tanggal untuk melihat menu</p>
+              <CardHeader>
+                <CardTitle className="text-lg">Kategori Menu</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Button
+                  variant={selectedCategory === 'all' ? 'default' : 'outline'}
+                  className="w-full justify-start"
+                  onClick={() => setSelectedCategory('all')}
+                >
+                  Semua Menu
+                </Button>
+                {categories.map((category) => (
+                  <Button
+                    key={category.id}
+                    variant={selectedCategory === category.id ? 'default' : 'outline'}
+                    className="w-full justify-start"
+                    onClick={() => setSelectedCategory(category.id)}
+                  >
+                    {category.name}
+                  </Button>
+                ))}
               </CardContent>
             </Card>
-          )}
+          </div>
+
+          {/* Menu Items */}
+          <div className="lg:col-span-3">
+            {filteredMenuItems.length === 0 ? (
+              <Card className="text-center py-12">
+                <CardContent>
+                  <p className="text-gray-500 mb-4">Tidak ada menu tersedia</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {filteredMenuItems.map((item) => {
+                  const quantity = getItemQuantityInCart(item.id);
+                  
+                  return (
+                    <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+                      {item.image_url && (
+                        <div className="aspect-video relative overflow-hidden">
+                          <img
+                            src={item.image_url}
+                            alt={item.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+                      
+                      <CardHeader>
+                        <div className="flex justify-between items-start">
+                          <CardTitle className="text-xl">{item.name}</CardTitle>
+                          {item.categories && (
+                            <Badge variant="secondary" className="ml-2">
+                              {item.categories.name}
+                            </Badge>
+                          )}
+                        </div>
+                        {item.description && (
+                          <CardDescription>{item.description}</CardDescription>
+                        )}
+                      </CardHeader>
+                      
+                      <CardContent>
+                        <div className="flex items-center justify-between">
+                          <span className="text-2xl font-bold text-orange-600">
+                            Rp {item.price.toLocaleString('id-ID')}
+                          </span>
+                          
+                          <div className="flex items-center space-x-2">
+                            {quantity > 0 ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    const dateString = selectedDate.toISOString().split('T')[0];
+                                    const cartItem = cartItems.find(
+                                      cartItem => cartItem.menu_item_id === item.id && cartItem.date === dateString
+                                    );
+                                    if (cartItem) {
+                                      removeFromCart(cartItem.id);
+                                    }
+                                  }}
+                                >
+                                  <Minus className="h-4 w-4" />
+                                </Button>
+                                <span className="font-semibold min-w-[2rem] text-center">
+                                  {quantity}
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => addToCart(item)}
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                onClick={() => addToCart(item)}
+                                className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                              >
+                                <Plus className="h-4 w-4 mr-2" />
+                                Tambah
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      <FloatingCartButton
-        cart={cart}
-        getTotalCartItems={getTotalCartItems}
-        getTotalCartPrice={getTotalCartPrice}
-        formatPrice={formatPrice}
-        createOrder={createOrder}
+      {/* Floating Cart Button */}
+      {totalCartItems > 0 && (
+        <FloatingCartButton
+          itemCount={totalCartItems}
+          onClick={() => setIsCartOpen(true)}
+        />
+      )}
+
+      {/* Cart Drawer */}
+      <Cart
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        cartItems={cartItems}
+        onRemoveItem={removeFromCart}
+        onCheckout={handleCheckoutSuccess}
+        cartOperations={cartOperations}
       />
     </div>
   );

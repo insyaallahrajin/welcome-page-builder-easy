@@ -1,15 +1,16 @@
 
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { Order } from '@/types/order';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, Calendar, User, CreditCard, Receipt } from 'lucide-react';
+import { ArrowLeft, Calendar, User, CreditCard, FileText, Clock, MapPin } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
+import { Navbar } from '@/components/Navbar';
+import type { Order } from '@/types/order';
 
 const OrderDetail = () => {
   const { orderId } = useParams<{ orderId: string }>();
@@ -19,20 +20,21 @@ const OrderDetail = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user && orderId) {
+    if (orderId && user) {
       fetchOrderDetail();
     }
-  }, [user, orderId]);
+  }, [orderId, user]);
 
   const fetchOrderDetail = async () => {
+    if (!orderId || !user) return;
+
     try {
-      const { data, error } = await supabase
+      const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .select(`
           *,
           order_line_items (
             id,
-            order_id,
             child_id,
             child_name,
             child_class,
@@ -47,53 +49,43 @@ const OrderDetail = () => {
             updated_at,
             menu_items (
               name,
-              image_url,
-              description
+              description,
+              image_url
             )
-          ),
-          payments (
-            id,
-            amount,
-            payment_method,
-            status,
-            transaction_id,
-            created_at
           )
         `)
         .eq('id', orderId)
-        .eq('user_id', user?.id)
+        .eq('user_id', user.id)
         .single();
 
-      if (error) {
-        console.error('Error fetching order detail:', error);
-        toast({
-          title: "Error",
-          description: "Gagal memuat detail pesanan",
-          variant: "destructive",
-        });
-        return;
+      if (orderError) {
+        if (orderError.code === 'PGRST116') {
+          toast({
+            title: "Pesanan tidak ditemukan",
+            description: "Pesanan yang Anda cari tidak ditemukan atau tidak dapat diakses",
+            variant: "destructive",
+          });
+          navigate('/orders');
+          return;
+        }
+        throw orderError;
       }
 
-      if (!data) {
-        toast({
-          title: "Pesanan Tidak Ditemukan",
-          description: "Pesanan yang Anda cari tidak ditemukan",
-          variant: "destructive",
-        });
-        navigate('/orders');
-        return;
-      }
+      // Get payment information
+      const { data: paymentData } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('order_id', orderId)
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-      // Transform the data to match our interface
-      const transformedOrder = {
-        ...data,
-        order_line_items: data.order_line_items.map((item: any) => ({
-          ...item,
-          menu_items: item.menu_items || { name: 'Unknown Item', image_url: '', description: '' }
-        }))
+      // Combine order with payment data
+      const orderWithPayment = {
+        ...orderData,
+        payments: paymentData || []
       };
 
-      setOrder(transformedOrder);
+      setOrder(orderWithPayment);
     } catch (error) {
       console.error('Error fetching order detail:', error);
       toast({
@@ -106,307 +98,360 @@ const OrderDetail = () => {
     }
   };
 
-  const getStatusBadgeVariant = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'paid':
-      case 'success':
-      case 'delivered':
-        return 'default';
-      case 'pending':
-        return 'secondary';
-      case 'failed':
-      case 'cancelled':
-        return 'destructive';
-      default:
-        return 'outline';
-    }
+  const getStatusBadge = (status: string) => {
+    const statusConfig = {
+      pending: { label: 'Menunggu', variant: 'secondary' as const },
+      confirmed: { label: 'Dikonfirmasi', variant: 'default' as const },
+      preparing: { label: 'Disiapkan', variant: 'default' as const },
+      ready: { label: 'Siap', variant: 'default' as const },
+      delivered: { label: 'Dikirim', variant: 'default' as const },
+      completed: { label: 'Selesai', variant: 'default' as const },
+      cancelled: { label: 'Dibatalkan', variant: 'destructive' as const },
+    };
+
+    const config = statusConfig[status as keyof typeof statusConfig] || {
+      label: status,
+      variant: 'secondary' as const
+    };
+
+    return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0,
-    }).format(amount);
+  const getPaymentStatusBadge = (status: string) => {
+    const statusConfig = {
+      pending: { label: 'Belum Bayar', variant: 'secondary' as const },
+      paid: { label: 'Sudah Bayar', variant: 'default' as const },
+      failed: { label: 'Gagal', variant: 'destructive' as const },
+      cancelled: { label: 'Dibatalkan', variant: 'destructive' as const },
+    };
+
+    const config = statusConfig[status as keyof typeof statusConfig] || {
+      label: status,
+      variant: 'secondary' as const
+    };
+
+    return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('id-ID', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    });
-  };
+  // Group items by child and date
+  const groupedItems = React.useMemo(() => {
+    if (!order?.order_line_items) return {};
 
-  const groupItemsByChild = () => {
-    if (!order) return {};
-    
-    const grouped = order.order_line_items.reduce((acc: any, item) => {
-      const childKey = `${item.child_name}_${item.child_class}`;
-      if (!acc[childKey]) {
-        acc[childKey] = {
-          child_name: item.child_name,
-          child_class: item.child_class,
-          items: []
-        };
+    const groups: { [key: string]: { [date: string]: any[] } } = {};
+
+    order.order_line_items.forEach(item => {
+      const childKey = `${item.child_name} (${item.child_class})`;
+      if (!groups[childKey]) {
+        groups[childKey] = {};
       }
-      acc[childKey].items.push(item);
-      return acc;
-    }, {});
+      if (!groups[childKey][item.delivery_date]) {
+        groups[childKey][item.delivery_date] = [];
+      }
+      groups[childKey][item.delivery_date].push(item);
+    });
 
-    return grouped;
-  };
+    return groups;
+  }, [order]);
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-spin rounded-full h-16 w-16 md:h-32 md:w-32 border-b-2 border-orange-500"></div>
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="flex justify-center items-center min-h-[calc(100vh-80px)]">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-orange-500"></div>
+        </div>
       </div>
     );
   }
 
   if (!order) {
     return (
-      <div className="max-w-4xl mx-auto p-3 md:p-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Pesanan Tidak Ditemukan</h1>
-          <Button onClick={() => navigate('/orders')}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Kembali ke Riwayat Pesanan
-          </Button>
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="container mx-auto px-4 py-8">
+          <Card className="text-center py-12">
+            <CardContent>
+              <FileText className="h-16 w-16 mx-auto text-gray-400 mb-4" />
+              <CardTitle className="text-xl mb-2">Pesanan Tidak Ditemukan</CardTitle>
+              <CardDescription className="mb-4">
+                Pesanan yang Anda cari tidak ditemukan atau tidak dapat diakses
+              </CardDescription>
+              <Button onClick={() => navigate('/orders')}>
+                Kembali ke Riwayat Pesanan
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
   }
 
-  const groupedItems = groupItemsByChild();
-  const paymentInfo = order.payments?.[0];
+  const latestPayment = order.payments?.[0];
 
   return (
-    <div className="max-w-4xl mx-auto p-3 md:p-6">
-      {/* Header */}
-      <div className="mb-6">
-        <Button 
-          variant="ghost" 
-          onClick={() => navigate('/orders')}
-          className="mb-4"
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Kembali ke Riwayat Pesanan
-        </Button>
-        
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
-              Detail Pesanan
-            </h1>
-            <p className="text-gray-600">#{order.order_number}</p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <Badge variant={getStatusBadgeVariant(order.status || '')}>
-              {order.status?.toUpperCase() || 'PENDING'}
-            </Badge>
-            <Badge variant={getStatusBadgeVariant(order.payment_status || '')}>
-              {order.payment_status?.toUpperCase() || 'PENDING'}
-            </Badge>
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+      <div className="container mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="mb-6">
+          <Button 
+            variant="ghost" 
+            onClick={() => navigate('/orders')}
+            className="mb-4"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Kembali ke Riwayat Pesanan
+          </Button>
+          
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">
+                Pesanan #{order.order_number}
+              </h1>
+              <p className="text-gray-600">
+                Dibuat pada {new Date(order.created_at).toLocaleDateString('id-ID', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </p>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row gap-2">
+              {getStatusBadge(order.status || 'pending')}
+              {getPaymentStatusBadge(order.payment_status || 'pending')}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Order Details */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Order Summary */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Receipt className="h-5 w-5" />
-                Ringkasan Pesanan
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-600">Nomor Pesanan</p>
-                  <p className="font-semibold">{order.order_number}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Tanggal Pesanan</p>
-                  <p className="font-semibold">{formatDate(order.created_at)}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Total Pembayaran</p>
-                  <p className="font-semibold text-lg text-orange-600">
-                    {formatCurrency(order.total_amount)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Status Pembayaran</p>
-                  <Badge variant={getStatusBadgeVariant(order.payment_status || '')}>
-                    {order.payment_status?.toUpperCase() || 'PENDING'}
-                  </Badge>
-                </div>
-              </div>
-              
-              {order.parent_notes && (
-                <>
-                  <Separator className="my-4" />
-                  <div>
-                    <p className="text-gray-600 text-sm mb-2">Catatan Orang Tua</p>
-                    <p className="text-sm bg-gray-50 p-3 rounded-lg">{order.parent_notes}</p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Order Details */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Order Summary */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <FileText className="h-5 w-5 mr-2" />
+                  Ringkasan Pesanan
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Nomor Pesanan:</span>
+                    <span className="font-medium">#{order.order_number}</span>
                   </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Order Items by Child */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Detail Pesanan per Anak
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {Object.entries(groupedItems).map(([childKey, childData]: [string, any]) => (
-                  <div key={childKey} className="border rounded-lg p-4">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
-                        <User className="h-5 w-5 text-orange-600" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-lg">{childData.child_name}</h3>
-                        <p className="text-gray-600 text-sm">{childData.child_class}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-3">
-                      {childData.items.map((item: any) => (
-                        <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <Calendar className="h-4 w-4 text-gray-500" />
-                            <div>
-                              <p className="font-medium">{item.menu_items.name}</p>
-                              <p className="text-sm text-gray-600">
-                                📅 {formatDate(item.delivery_date)}
-                              </p>
-                              {item.menu_items.description && (
-                                <p className="text-xs text-gray-500 mt-1">
-                                  {item.menu_items.description}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-semibold">
-                              {formatCurrency(item.unit_price)}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              Qty: {item.quantity}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    
-                    <Separator className="my-3" />
-                    <div className="flex justify-between items-center">
-                      <p className="font-medium">Subtotal {childData.child_name}</p>
-                      <p className="font-semibold text-orange-600">
-                        {formatCurrency(
-                          childData.items.reduce((sum: number, item: any) => 
-                            sum + (item.total_price || item.unit_price * item.quantity), 0
-                          )
-                        )}
-                      </p>
-                    </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Total Pembayaran:</span>
+                    <span className="font-bold text-lg text-green-600">
+                      Rp {order.total_amount.toLocaleString('id-ID')}
+                    </span>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Payment Information */}
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5" />
-                Informasi Pembayaran
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3 text-sm">
-                <div>
-                  <p className="text-gray-600">Status Pembayaran</p>
-                  <Badge variant={getStatusBadgeVariant(order.payment_status || '')}>
-                    {order.payment_status?.toUpperCase() || 'PENDING'}
-                  </Badge>
-                </div>
-                
-                {paymentInfo && (
-                  <>
-                    <div>
-                      <p className="text-gray-600">Metode Pembayaran</p>
-                      <p className="font-semibold capitalize">
-                        {paymentInfo.payment_method || order.payment_method || 'Midtrans'}
-                      </p>
-                    </div>
-                    
-                    {paymentInfo.transaction_id && (
+                  {order.parent_notes && (
+                    <>
+                      <Separator />
                       <div>
-                        <p className="text-gray-600">ID Transaksi</p>
-                        <p className="font-mono text-xs break-all">
-                          {paymentInfo.transaction_id}
+                        <span className="text-gray-600 block mb-2">Catatan:</span>
+                        <p className="text-gray-800 bg-gray-50 p-3 rounded-md">
+                          {order.parent_notes}
                         </p>
                       </div>
-                    )}
-                    
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Order Items by Child and Date */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <User className="h-5 w-5 mr-2" />
+                  Detail Pesanan
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  {Object.entries(groupedItems).map(([childKey, dateGroups]) => (
+                    <div key={childKey} className="border rounded-lg p-4">
+                      <h3 className="font-semibold text-lg mb-4 text-blue-600">
+                        👤 {childKey}
+                      </h3>
+                      
+                      <div className="space-y-4">
+                        {Object.entries(dateGroups).map(([date, items]) => (
+                          <div key={date} className="bg-gray-50 rounded-md p-3">
+                            <div className="flex items-center mb-3">
+                              <Calendar className="h-4 w-4 mr-2 text-gray-500" />
+                              <span className="font-medium text-gray-700">
+                                📅 {new Date(date).toLocaleDateString('id-ID', {
+                                  weekday: 'long',
+                                  year: 'numeric',
+                                  month: 'long',
+                                  day: 'numeric'
+                                })}
+                              </span>
+                            </div>
+                            
+                            <div className="space-y-2">
+                              {items.map((item, index) => (
+                                <div key={index} className="flex justify-between items-center bg-white p-3 rounded border">
+                                  <div className="flex-1">
+                                    <h4 className="font-medium">{item.menu_items?.name}</h4>
+                                    {item.menu_items?.description && (
+                                      <p className="text-sm text-gray-600">
+                                        {item.menu_items.description}
+                                      </p>
+                                    )}
+                                    <div className="flex items-center mt-1 text-sm text-gray-500">
+                                      <span>Qty: {item.quantity}</span>
+                                      <span className="mx-2">•</span>
+                                      <span>Rp {item.unit_price.toLocaleString('id-ID')}/item</span>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="font-bold text-green-600">
+                                      Rp {(item.total_price || (item.unit_price * item.quantity)).toLocaleString('id-ID')}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Payment Information */}
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <CreditCard className="h-5 w-5 mr-2" />
+                  Informasi Pembayaran
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Status:</span>
+                    {getPaymentStatusBadge(order.payment_status || 'pending')}
+                  </div>
+                  
+                  {order.payment_method && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Metode:</span>
+                      <span className="font-medium capitalize">{order.payment_method}</span>
+                    </div>
+                  )}
+                  
+                  {latestPayment && (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">ID Transaksi:</span>
+                        <span className="font-mono text-sm">{latestPayment.transaction_id}</span>
+                      </div>
+                      
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Waktu Bayar:</span>
+                        <span className="text-sm">
+                          {new Date(latestPayment.created_at).toLocaleDateString('id-ID', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  
+                  <Separator />
+                  
+                  <div className="flex justify-between text-lg font-bold">
+                    <span>Total Dibayar:</span>
+                    <span className="text-green-600">
+                      Rp {order.total_amount.toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Order Timeline */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Clock className="h-5 w-5 mr-2" />
+                  Timeline Pesanan
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
                     <div>
-                      <p className="text-gray-600">Waktu Pembayaran</p>
-                      <p className="font-semibold">
-                        {formatDate(paymentInfo.created_at)}
+                      <p className="font-medium">Pesanan Dibuat</p>
+                      <p className="text-sm text-gray-600">
+                        {new Date(order.created_at).toLocaleDateString('id-ID', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
                       </p>
                     </div>
-                  </>
-                )}
-                
-                {order.midtrans_order_id && (
-                  <div>
-                    <p className="text-gray-600">Order ID Midtrans</p>
-                    <p className="font-mono text-xs break-all">
-                      {order.midtrans_order_id}
-                    </p>
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Total Summary */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Total Pembayaran</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span>Subtotal</span>
-                  <span>{formatCurrency(order.total_amount)}</span>
+                  
+                  {order.payment_status === 'paid' && latestPayment && (
+                    <div className="flex items-center space-x-3">
+                      <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                      <div>
+                        <p className="font-medium">Pembayaran Berhasil</p>
+                        <p className="text-sm text-gray-600">
+                          {new Date(latestPayment.created_at).toLocaleDateString('id-ID', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {order.status === 'completed' && (
+                    <div className="flex items-center space-x-3">
+                      <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                      <div>
+                        <p className="font-medium">Pesanan Selesai</p>
+                        <p className="text-sm text-gray-600">
+                          {new Date(order.updated_at).toLocaleDateString('id-ID', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <Separator />
-                <div className="flex justify-between font-bold text-lg">
-                  <span>Total</span>
-                  <span className="text-orange-600">
-                    {formatCurrency(order.total_amount)}
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </div>
