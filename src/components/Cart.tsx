@@ -1,25 +1,34 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { ShoppingCart, X } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { ShoppingCart } from 'lucide-react';
 import { CartItem } from '@/types/cart';
 import { useCartOperations } from '@/hooks/useCartOperations';
 import CartItemList from '@/components/cart/CartItemList';
 import CheckoutForm from '@/components/cart/CheckoutForm';
 import OrderSummary from '@/components/cart/OrderSummary';
 
-interface CartProps {
-  isOpen: boolean;
-  onClose: () => void;
-  cartItems: CartItem[];
-  onRemoveItem: (itemId: string) => void;
-  onCheckout: () => void;
-  cartOperations: ReturnType<typeof useCartOperations>;
+declare global {
+  interface Window {
+    snap: {
+      pay: (token: string, options?: {
+        onSuccess?: (result: any) => void;
+        onPending?: (result: any) => void;
+        onError?: (result: any) => void;
+        onClose?: () => void;
+      }) => void;
+    };
+  }
 }
 
-const Cart = ({ isOpen, onClose, cartItems, onRemoveItem, onCheckout, cartOperations }: CartProps) => {
+interface CartProps {
+  items: CartItem[];
+  onUpdateCart: (items: CartItem[]) => void;
+}
+
+const Cart = ({ items, onUpdateCart }: CartProps) => {
+  const [isOpen, setIsOpen] = useState(false);
   const {
     children,
     selectedChildId,
@@ -29,25 +38,34 @@ const Cart = ({ isOpen, onClose, cartItems, onRemoveItem, onCheckout, cartOperat
     loading,
     fetchChildren,
     handleCheckout
-  } = cartOperations;
+  } = useCartOperations();
 
   useEffect(() => {
     if (isOpen) {
       fetchChildren();
     }
-  }, [isOpen, fetchChildren]);
+  }, [isOpen]);
 
   const updateQuantity = (itemId: string, newQuantity: number) => {
     if (newQuantity === 0) {
-      onRemoveItem(itemId);
+      onUpdateCart(items.filter(item => item.id !== itemId));
     } else {
-      // Handle quantity update - this would need to be passed as a prop or handled differently
-      console.log('Update quantity not implemented in this interface');
+      onUpdateCart(items.map(item =>
+        item.id === itemId ? { ...item, quantity: newQuantity } : item
+      ));
     }
   };
 
+  const removeItem = (itemId: string) => {
+    onUpdateCart(items.filter(item => item.id !== itemId));
+  };
+
   const getTotalPrice = () => {
-    return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
+    return items.reduce((total, item) => total + (item.price * item.quantity), 0);
+  };
+
+  const getTotalItems = () => {
+    return items.reduce((total, item) => total + item.quantity, 0);
   };
 
   const formatPrice = (price: number) => {
@@ -58,37 +76,48 @@ const Cart = ({ isOpen, onClose, cartItems, onRemoveItem, onCheckout, cartOperat
     }).format(price);
   };
 
-  const handleCheckoutClick = async () => {
-    await handleCheckout(cartItems, () => {
-      onCheckout();
-      onClose();
+  const onCheckout = async () => {
+    await handleCheckout(items, () => {
+      // Clear cart and close dialog
+      onUpdateCart([]);
+      setIsOpen(false);
       setSelectedChildId('');
       setNotes('');
     });
   };
 
-  if (cartItems.length === 0) {
+  if (items.length === 0) {
     return null;
   }
 
   const canCheckout = selectedChildId && children.length > 0;
 
   return (
-    <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>Keranjang Belanja</SheetTitle>
-          <SheetDescription>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button
+          size="lg"
+          className="fixed bottom-4 right-4 rounded-full shadow-lg bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 z-50"
+        >
+          <ShoppingCart className="h-5 w-5 mr-2" />
+          {getTotalItems()} item • {formatPrice(getTotalPrice())}
+        </Button>
+      </DialogTrigger>
+      
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Keranjang Belanja</DialogTitle>
+          <DialogDescription>
             Review pesanan Anda dan pilih anak untuk pengiriman
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="space-y-4 mt-6">
+        <div className="space-y-4">
           {/* Cart Items */}
           <CartItemList
-            items={cartItems}
+            items={items}
             onUpdateQuantity={updateQuantity}
-            onRemoveItem={onRemoveItem}
+            onRemoveItem={removeItem}
             formatPrice={formatPrice}
           />
 
@@ -105,13 +134,13 @@ const Cart = ({ isOpen, onClose, cartItems, onRemoveItem, onCheckout, cartOperat
           <OrderSummary
             totalPrice={getTotalPrice()}
             formatPrice={formatPrice}
-            onCheckout={handleCheckoutClick}
+            onCheckout={onCheckout}
             loading={loading}
             canCheckout={canCheckout}
           />
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 };
 

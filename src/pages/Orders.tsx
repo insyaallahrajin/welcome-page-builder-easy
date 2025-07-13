@@ -1,40 +1,33 @@
 
-import React, { useState, useMemo } from 'react';
 import { useOrders } from '@/hooks/useOrders';
-import { useAuth } from '@/hooks/useAuth';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { ShoppingBag, Calendar, User, CreditCard, AlertCircle } from 'lucide-react';
 import { OrderFilters } from '@/components/orders/OrderFilters';
-import { OrderCard } from '@/components/orders/OrderCard';
-import { OrderSelectionControls } from '@/components/orders/OrderSelectionControls';
 import { EmptyOrdersState } from '@/components/orders/EmptyOrdersState';
-import { BatchPaymentButton } from '@/components/orders/BatchPaymentButton';
-import { PaginationControls } from '@/components/ui/pagination-controls';
 import { usePagination } from '@/hooks/usePagination';
-import { useBatchPayment } from '@/hooks/useBatchPayment';
-import { Order } from '@/types/order';
-import { Navbar } from '@/components/Navbar';
+import { PaginationControls } from '@/components/ui/pagination-controls';
+import { useState } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 
 const Orders = () => {
-  const { user } = useAuth();
-  const { orders, loading, fetchOrders } = useOrders();
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [paymentFilter, setPaymentFilter] = useState<string>('all');
-  const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
-  
-  const batchPayment = useBatchPayment();
+  const { orders, loading, retryPayment } = useOrders();
+  const [activeTab, setActiveTab] = useState('all');
 
-  // Filter orders based on selected filters
-  const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
-      const statusMatch = statusFilter === 'all' || order.status === statusFilter;
-      const paymentMatch = paymentFilter === 'all' || order.payment_status === paymentFilter;
-      return statusMatch && paymentMatch;
-    });
-  }, [orders, statusFilter, paymentFilter]);
+  // Filter orders berdasarkan tab aktif
+  const getFilteredOrders = () => {
+    switch (activeTab) {
+      case 'pending':
+        return orders.filter(order => order.status === 'pending');
+      case 'confirmed':
+        return orders.filter(order => order.status === 'confirmed');
+      case 'preparing':
+        return orders.filter(order => order.status === 'preparing');
+      case 'delivered':
+        return orders.filter(order => order.status === 'delivered');
+      default:
+        return orders;
+    }
+  };
+
+  const filteredOrders = getFilteredOrders();
 
   // Pagination
   const {
@@ -49,132 +42,51 @@ const Orders = () => {
     totalItems
   } = usePagination({
     data: filteredOrders,
-    itemsPerPage: 10
+    itemsPerPage: 12
   });
-
-  const handleSelectOrder = (orderId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedOrders([...selectedOrders, orderId]);
-    } else {
-      setSelectedOrders(selectedOrders.filter(id => id !== orderId));
-    }
-  };
-
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      const eligibleOrders = paginatedOrders
-        .filter(order => order.payment_status === 'pending')
-        .map(order => order.id);
-      setSelectedOrders(eligibleOrders);
-    } else {
-      setSelectedOrders([]);
-    }
-  };
-
-  const selectedOrdersData = paginatedOrders.filter(order => 
-    selectedOrders.includes(order.id)
-  );
-
-  const handleBatchPaymentSuccess = () => {
-    setSelectedOrders([]);
-    fetchOrders();
-  };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Navbar />
-        <div className="flex justify-center items-center min-h-[calc(100vh-80px)]">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-orange-500"></div>
-        </div>
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="animate-spin rounded-full h-16 w-16 md:h-32 md:w-32 border-b-2 border-orange-500"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar />
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent mb-2">
-            Riwayat Pesanan
-          </h1>
-          <p className="text-gray-600">
-            Lihat dan kelola semua pesanan makanan Anda
-          </p>
-        </div>
-
-        {orders.length === 0 ? (
-          <EmptyOrdersState />
-        ) : (
-          <>
-            <div className="mb-6">
-              <OrderFilters
-                statusFilter={statusFilter}
-                paymentFilter={paymentFilter}
-                onStatusFilterChange={setStatusFilter}
-                onPaymentFilterChange={setPaymentFilter}
-                totalOrders={orders.length}
-                filteredCount={filteredOrders.length}
-              />
-            </div>
-
-            {/* Selection Controls */}
-            {paginatedOrders.some(order => order.payment_status === 'pending') && (
-              <OrderSelectionControls
-                selectedCount={selectedOrders.length}
-                totalEligible={paginatedOrders.filter(o => o.payment_status === 'pending').length}
-                onSelectAll={handleSelectAll}
-                onClearSelection={() => setSelectedOrders([])}
-              />
-            )}
-
-            {/* Batch Payment Button */}
-            {selectedOrders.length > 0 && (
-              <div className="mb-6">
-                <BatchPaymentButton
-                  selectedOrders={selectedOrdersData}
-                  onSuccess={handleBatchPaymentSuccess}
-                />
-              </div>
-            )}
-
-            {/* Orders List */}
-            <div className="space-y-4">
-              {paginatedOrders.map((order) => (
-                <div key={order.id} className="flex items-start space-x-4">
-                  {order.payment_status === 'pending' && (
-                    <div className="mt-6">
-                      <Checkbox
-                        checked={selectedOrders.includes(order.id)}
-                        onCheckedChange={(checked) => 
-                          handleSelectOrder(order.id, checked as boolean)
-                        }
-                      />
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    <OrderCard order={order} />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Pagination */}
-            <PaginationControls
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={goToPage}
-              canGoNext={canGoNext}
-              canGoPrev={canGoPrev}
-              startIndex={startIndex}
-              endIndex={endIndex}
-              totalItems={totalItems}
-              itemLabel="pesanan"
-            />
-          </>
-        )}
+    <div className="max-w-6xl mx-auto p-3 md:p-6">
+      <div className="text-center mb-4 md:mb-8">
+        <h1 className="text-xl md:text-3xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent mb-1 md:mb-2">
+          Riwayat Pesanan
+        </h1>
+        <p className="text-gray-600 text-sm md:text-base">Pantau status pesanan makanan anak Anda</p>
       </div>
+
+      {orders.length === 0 ? (
+        <EmptyOrdersState />
+      ) : (
+        <>
+          <OrderFilters 
+            orders={paginatedOrders} 
+            onRetryPayment={retryPayment}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          />
+          
+          {/* Pagination Controls */}
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={goToPage}
+            canGoNext={canGoNext}
+            canGoPrev={canGoPrev}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            totalItems={totalItems}
+            itemLabel="pesanan"
+          />
+        </>
+      )}
     </div>
   );
 };
