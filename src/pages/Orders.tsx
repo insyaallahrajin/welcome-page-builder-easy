@@ -133,7 +133,7 @@ const Orders = () => {
             {selectedOrders.length > 0 && (
               <div className="mb-6">
                 <BatchPaymentButton
-                  orders={selectedOrdersData}
+                  selectedOrders={selectedOrdersData}
                   onSuccess={handleBatchPaymentSuccess}
                 />
               </div>
