@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +14,7 @@ import DateCalendar from '@/components/orderFood/DateCalendar';
 import { Navbar } from '@/components/Navbar';
 import FloatingCartButton from '@/components/orderFood/FloatingCartButton';
 import Cart from '@/components/Cart';
+import { CartItem } from '@/types/cart';
 
 interface MenuItem {
   id: string;
@@ -31,19 +33,6 @@ interface Category {
   id: string;
   name: string;
   description: string;
-}
-
-interface CartItem {
-  id: string;
-  name: string;
-  price: number;
-  quantity: number;
-  menu_item_id: string;
-  date: string;
-  delivery_date: string;
-  child_id?: string;
-  child_name?: string;
-  child_class?: string;
 }
 
 const Index = () => {
@@ -147,6 +136,7 @@ const Index = () => {
         name: menuItem.name,
         price: menuItem.price,
         quantity: 1,
+        image_url: menuItem.image_url || '',
         menu_item_id: menuItem.id,
         date: dateString,
         delivery_date: dateString,
