@@ -79,13 +79,18 @@ const OrderDetail = () => {
         .order('created_at', { ascending: false })
         .limit(1);
 
-      // Combine order with payment data
-      const orderWithPayment = {
+      // Transform the data to match our interface
+      const transformedOrder = {
         ...orderData,
+        order_line_items: orderData.order_line_items.map((item: any) => ({
+          ...item,
+          order_id: orderData.id, // Add the missing order_id
+          menu_items: item.menu_items || { name: 'Unknown Item', image_url: '' }
+        })),
         payments: paymentData || []
       };
 
-      setOrder(orderWithPayment);
+      setOrder(transformedOrder);
     } catch (error) {
       console.error('Error fetching order detail:', error);
       toast({

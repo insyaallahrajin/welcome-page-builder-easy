@@ -9,19 +9,6 @@ import CartItemList from '@/components/cart/CartItemList';
 import CheckoutForm from '@/components/cart/CheckoutForm';
 import OrderSummary from '@/components/cart/OrderSummary';
 
-declare global {
-  interface Window {
-    snap: {
-      pay: (token: string, options?: {
-        onSuccess?: (result: any) => void;
-        onPending?: (result: any) => void;
-        onError?: (result: any) => void;
-        onClose?: () => void;
-      }) => void;
-    };
-  }
-}
-
 interface CartProps {
   items: CartItem[];
   onUpdateCart: (items: CartItem[]) => void;

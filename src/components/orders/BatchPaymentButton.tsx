@@ -6,11 +6,11 @@ import { useBatchPayment } from '@/hooks/useBatchPayment';
 
 interface BatchPaymentButtonProps {
   selectedOrders: Order[];
-  onPaymentSuccess?: () => void;
+  onSuccess?: () => void;
   disabled?: boolean;
 }
 
-export const BatchPaymentButton = ({ selectedOrders, onPaymentSuccess, disabled }: BatchPaymentButtonProps) => {
+export const BatchPaymentButton = ({ selectedOrders, onSuccess, disabled }: BatchPaymentButtonProps) => {
   const { loading, processBatchPayment } = useBatchPayment();
 
   const pendingOrders = selectedOrders.filter(order => order.payment_status === 'pending');
@@ -49,7 +49,7 @@ export const BatchPaymentButton = ({ selectedOrders, onPaymentSuccess, disabled 
       </div>
       
       <Button
-        onClick={() => processBatchPayment(pendingOrders, onPaymentSuccess)}
+        onClick={() => processBatchPayment(pendingOrders, onSuccess)}
         disabled={loading || disabled}
         className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
         size="lg"

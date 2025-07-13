@@ -5,19 +5,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/components/ui/use-toast';
 import { Order } from '@/types/order';
 
-declare global {
-  interface Window {
-    snap: {
-      pay: (token: string, options?: {
-        onSuccess?: (result: any) => void;
-        onPending?: (result: any) => void;
-        onError?: (result: any) => void;
-        onClose?: () => void;
-      }) => void;
-    };
-  }
-}
-
 export const useBatchPayment = () => {
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();

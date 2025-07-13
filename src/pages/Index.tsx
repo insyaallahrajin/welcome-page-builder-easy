@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,8 +11,8 @@ import { useChildren } from '@/hooks/useChildren';
 import ChildSelector from '@/components/orderFood/ChildSelector';
 import DateCalendar from '@/components/orderFood/DateCalendar';
 import { Navbar } from '@/components/Navbar';
-import { FloatingCartButton } from '@/components/orderFood/FloatingCartButton';
-import { Cart } from '@/components/Cart';
+import FloatingCartButton from '@/components/orderFood/FloatingCartButton';
+import Cart from '@/components/Cart';
 
 interface MenuItem {
   id: string;
@@ -231,6 +230,8 @@ const Index = () => {
             <DateCalendar 
               selectedDate={selectedDate}
               onDateSelect={setSelectedDate}
+              orderSchedules={[]}
+              isDateDisabled={() => false}
             />
 
             {/* Category Filter */}

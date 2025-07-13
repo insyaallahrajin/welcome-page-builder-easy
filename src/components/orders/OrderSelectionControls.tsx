@@ -1,29 +1,21 @@
 
 import { Button } from '@/components/ui/button';
 import { CheckSquare, Square } from 'lucide-react';
-import { Order } from '@/types/order';
 
 interface OrderSelectionControlsProps {
-  orders: Order[];
-  selectedOrders: Order[];
-  onSelectAll: () => void;
-  onDeselectAll: () => void;
-  onSelectPending: () => void;
+  selectedCount: number;
+  totalEligible: number;
+  onSelectAll: (checked: boolean) => void;
+  onClearSelection: () => void;
 }
 
 export const OrderSelectionControls = ({ 
-  orders, 
-  selectedOrders, 
-  onSelectAll, 
-  onDeselectAll, 
-  onSelectPending 
+  selectedCount,
+  totalEligible,
+  onSelectAll,
+  onClearSelection
 }: OrderSelectionControlsProps) => {
-  const pendingOrders = orders.filter(order => order.payment_status === 'pending');
-  const allSelected = orders.length > 0 && selectedOrders.length === orders.length;
-  const someSelected = selectedOrders.length > 0;
-  const pendingSelected = pendingOrders.every(order => 
-    selectedOrders.some(selected => selected.id === order.id)
-  );
+  const allSelected = selectedCount === totalEligible && totalEligible > 0;
 
   return (
     <div className="flex flex-wrap gap-2 mb-4 p-3 bg-gray-50 rounded-lg">
@@ -34,29 +26,28 @@ export const OrderSelectionControls = ({
       <Button
         variant="outline"
         size="sm"
-        onClick={allSelected ? onDeselectAll : onSelectAll}
+        onClick={() => onSelectAll(!allSelected)}
         className="flex items-center gap-1"
       >
         {allSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
-        {allSelected ? 'Batalkan Semua' : 'Pilih Semua'}
+        {allSelected ? 'Batalkan Semua' : `Pilih Semua (${totalEligible})`}
       </Button>
 
-      {pendingOrders.length > 0 && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onSelectPending}
-          className="flex items-center gap-1"
-        >
-          {pendingSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
-          Pilih Belum Bayar ({pendingOrders.length})
-        </Button>
-      )}
-
-      {someSelected && (
-        <div className="flex items-center text-sm text-gray-600">
-          <span>{selectedOrders.length} pesanan dipilih</span>
-        </div>
+      {selectedCount > 0 && (
+        <>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onClearSelection}
+            className="flex items-center gap-1"
+          >
+            Batal Pilih
+          </Button>
+          
+          <div className="flex items-center text-sm text-gray-600">
+            <span>{selectedCount} pesanan dipilih</span>
+          </div>
+        </>
       )}
     </div>
   );
